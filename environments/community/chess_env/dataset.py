@@ -5,7 +5,7 @@ from collections.abc import Iterator
 from typing import Any, Dict, List, Tuple
 
 import chess
-from atropos.environments.community.chess_env.prompts import (
+from prompts import (
     SYSTEM_PROMPT,
     USER_PROMPT_TEMPLATE,
 )

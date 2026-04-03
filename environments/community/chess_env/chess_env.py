@@ -4,10 +4,12 @@ import os
 import random
 import re
 from typing import Dict, List, Optional, Tuple, Union
+from rich import print as rprint
+
 
 import chess
 import chess.engine
-from atropos.environments.community.chess_env.dataset import (
+from dataset import (
     ChessPuzzleItem,
     CurriculumManager,
     DatasetConfig,
@@ -31,6 +33,7 @@ class ChessEnv(BaseEnv):
         config: BaseEnvConfig,
         server_configs: List[APIServerConfig],
         testing=False,
+        slurm=False,
     ):
         """
         Initialize the Chess reasoning and playing environment.
@@ -43,8 +46,8 @@ class ChessEnv(BaseEnv):
     @classmethod
     def config_init(self) -> Tuple[BaseEnvConfig, List[APIServerConfig]]:
         env_config = BaseEnvConfig(
-            group_size=16,
-            use_wandb=True,
+            group_size=8,
+            use_wandb=False,
             max_num_workers=128,
             rollout_server_url="http://localhost:8000",
             total_steps=100,
@@ -59,10 +62,11 @@ class ChessEnv(BaseEnv):
         )
         server_configs = [
             APIServerConfig(
-                model_name="codingmonster1234/chess-sft-modelv2",
-                base_url="http://localhost:9004/v1",
+                tokenizer_name="./base_model/checkpoint-168",
+                base_url="http://localhost:9000/v1",
                 api_key="x",
                 num_requests_for_eval=256,
+                server_type="vllm",
             )
         ]
         self.tokenizer = AutoTokenizer.from_pretrained(
@@ -98,17 +102,19 @@ class ChessEnv(BaseEnv):
         self.train = CurriculumManager(cfg=train_config)
         self.test = CurriculumManager(cfg=test_config)
 
-        print(
-            f"Loaded dataset with {len(self.train)} training examples and {len(self.test)} test examples"
+        rprint(
+            f"Loaded dataset: [bold magenta]{len(self.train)}[/bold magenta] train | "
+            f"[bold magenta]{len(self.test)}[/bold magenta] test examples"
         )
 
         # Initialize Async Stockfish Engine
         try:
             _, self.engine = await chess.engine.popen_uci(self.stockfish_path)
-            print("Stockfish engine initialized successfully.")
+            rprint("[bold cyan]Stockfish[/bold cyan] engine [green]initialized successfully[/green].")
         except Exception as e:
-            print(
-                f"Failed to start Stockfish. Ensure it is installed and in PATH. Error: {e}"
+            rprint(
+                f"[bold red]Error:[/bold red] Could not start [bold cyan]Stockfish[/bold cyan]. "
+                f"Check path: [yellow]{self.stockfish_path}[/yellow]\n[red]{e}[/red]"
             )
 
         self.iter = 0
@@ -146,7 +152,7 @@ class ChessEnv(BaseEnv):
         Generate and collect model responses for scoring.
         """
         messages = []
-        for role_dict in item["prompt"]:
+        for role_dict in item.prompt:
             messages.append(dict(role_dict))
 
         prompt = self.tokenizer.apply_chat_template(
@@ -168,7 +174,7 @@ class ChessEnv(BaseEnv):
 
         for i, completion_choice in enumerate(completions.choices):
             trajectory_messages = []
-            for role_dict in item["prompt"]:
+            for role_dict in item.prompt:
                 trajectory_messages.append(dict(role_dict))
 
             trajectory_messages.append(
@@ -178,10 +184,10 @@ class ChessEnv(BaseEnv):
             to_score.append(
                 {
                     "messages": tuple(trajectory_messages),
-                    "best_move": item["best_move"],
-                    "rating": item["rating"],
-                    "fen": item["fen"],
-                    "tags": item["tags"],
+                    "best_move": item.best_move,
+                    "rating": item.rating,
+                    "fen": item.fen,
+                    "tags": item.tags,
                     "tokens": nodes[i].tokens,
                     "masks": nodes[i].masked_tokens,
                     "logprobs": nodes[i].logprobs,
