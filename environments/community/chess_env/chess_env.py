@@ -45,12 +45,13 @@ class ChessEnv(BaseEnv):
     @classmethod
     def config_init(self) -> Tuple[BaseEnvConfig, List[APIServerConfig]]:
         env_config = BaseEnvConfig(
+            tokenizer_name="./base_model/checkpoint-168",
             group_size=8,
             use_wandb=False,
             max_num_workers=128,
             rollout_server_url="http://localhost:8000",
             total_steps=100,
-            batch_size=8,
+            batch_size=2,
             steps_per_eval=20,
             max_token_length=1024 * 4,
             inference_weight=1.0,
@@ -62,7 +63,7 @@ class ChessEnv(BaseEnv):
         server_configs = [
             APIServerConfig(
                 tokenizer_name="./base_model/checkpoint-168",
-                base_url="http://localhost:9000/v1",
+                base_url="http://localhost:9001/v1",
                 api_key="x",
                 num_requests_for_eval=256,
                 server_type="vllm",
@@ -108,7 +109,7 @@ class ChessEnv(BaseEnv):
 
         # Initialize Async Stockfish Engine
         try:
-            _, self.engine = await chess.engine.popen_uci(self.stockfish_path)
+            self.engine = chess.engine.SimpleEngine.popen_uci(self.stockfish_path)
             rprint(
                 "[bold cyan]Stockfish[/bold cyan] engine [green]initialized successfully[/green]."
             )
@@ -152,6 +153,7 @@ class ChessEnv(BaseEnv):
         """
         Generate and collect model responses for scoring.
         """
+
         messages = []
         for role_dict in item.prompt:
             messages.append(dict(role_dict))
@@ -237,7 +239,7 @@ class ChessEnv(BaseEnv):
 
             board.push(move)
             # Eval time strictly limited to prevent hanging
-            info = await self.engine.analyse(board, chess.engine.Limit(time=0.05))
+            info = self.engine.analyse(board, chess.engine.Limit(depth=15))
 
             # Get score from the perspective of the player who just moved
             score = info["score"].pov(not board.turn).score(mate_score=10000)
@@ -297,6 +299,9 @@ class ChessEnv(BaseEnv):
                 # 1.0 base reward for getting format correct.
                 # Subtract difference in centipawns divided by 100 to scale dynamically with pawn differences.
                 eval_diff = eval_best - eval_chosen
+                print(
+                    f"eval of best move: {eval_best}, eval of chosen move: {eval_chosen}, diff: {eval_diff}"
+                )
 
                 # Proportional calculation (Maxes out at 1.0 if move is perfect)
                 reward_eval = 1.0 - (max(0.0, eval_diff) / 100.0)
@@ -308,6 +313,8 @@ class ChessEnv(BaseEnv):
             response_tokens = len(
                 self.tokenizer.encode(item["messages"][-1]["content"])
             )
+            print(f"Response tokens: {response_tokens}")
+
             if response_tokens > self.config.max_token_length * 0.95:
                 final_score -= 0.5 * (response_tokens / self.config.max_token_length)
 
