@@ -45,7 +45,7 @@ async def test():
         # state = managed.get_state()
         # nodes = state["nodes"]
 
-    rprint(completions)
+    rprint(completions.model_dump())
 
 
 if __name__ == "__main__":
