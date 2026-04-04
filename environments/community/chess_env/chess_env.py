@@ -4,8 +4,6 @@ import os
 import random
 import re
 from typing import Dict, List, Optional, Tuple, Union
-from rich import print as rprint
-
 
 import chess
 import chess.engine
@@ -14,9 +12,10 @@ from dataset import (
     CurriculumManager,
     DatasetConfig,
 )
+from rich import print as rprint
 from tqdm.asyncio import tqdm_asyncio
-from transformers import AutoTokenizer
 
+# from transformers import AutoTokenizer
 from atroposlib.envs.base import (
     APIServerConfig,
     BaseEnv,
@@ -69,9 +68,9 @@ class ChessEnv(BaseEnv):
                 server_type="vllm",
             )
         ]
-        self.tokenizer = AutoTokenizer.from_pretrained(
+        """self.tokenizer = AutoTokenizer.from_pretrained(
             "codingmonster1234/chess-sft-modelv2", subfolder="checkpoint-168"
-        )
+        )"""
 
         return env_config, server_configs
 
@@ -110,7 +109,9 @@ class ChessEnv(BaseEnv):
         # Initialize Async Stockfish Engine
         try:
             _, self.engine = await chess.engine.popen_uci(self.stockfish_path)
-            rprint("[bold cyan]Stockfish[/bold cyan] engine [green]initialized successfully[/green].")
+            rprint(
+                "[bold cyan]Stockfish[/bold cyan] engine [green]initialized successfully[/green]."
+            )
         except Exception as e:
             rprint(
                 f"[bold red]Error:[/bold red] Could not start [bold cyan]Stockfish[/bold cyan]. "
