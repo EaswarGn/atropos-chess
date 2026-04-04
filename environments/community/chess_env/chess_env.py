@@ -69,9 +69,6 @@ class ChessEnv(BaseEnv):
                 server_type="vllm",
             )
         ]
-        """self.tokenizer = AutoTokenizer.from_pretrained(
-            "codingmonster1234/chess-sft-modelv2", subfolder="checkpoint-168"
-        )"""
 
         return env_config, server_configs
 
@@ -288,35 +285,49 @@ class ChessEnv(BaseEnv):
 
         model_evals = await asyncio.gather(*eval_tasks)
 
+        # print(f"\n\nscoring model responses for fen: {fen}, best move: {best_move}, eval of best move: {eval_best}")
         for i, item in enumerate(rollout_group_data):
+            # print("\n\n")
+            # print("_" * 50)
+            # print("scoring prediction:", extracted_moves[i], "with eval:", model_evals[i])
             prediction = extracted_moves[i]
             eval_chosen = model_evals[i]
 
             if prediction is None:
                 # Hard punishment/0 reward if the model fails the `<think>` and `<answer>` formatting
                 final_score = 0.0
+
+                # print("model failed to produce valid format, assigning score of 0.0")
             else:
-                # 1.0 base reward for getting format correct.
-                # Subtract difference in centipawns divided by 100 to scale dynamically with pawn differences.
-                eval_diff = eval_best - eval_chosen
-                print(
-                    f"eval of best move: {eval_best}, eval of chosen move: {eval_chosen}, diff: {eval_diff}"
-                )
+                # Calculate the loss in centipawns.
+                # We use max(0, ...) because the model shouldn't be penalized
+                # if it finds a move even better than the 'best_move' reference.
+                eval_diff = max(0.0, eval_best - eval_chosen)
 
-                # Proportional calculation (Maxes out at 1.0 if move is perfect)
-                reward_eval = 1.0 - (max(0.0, eval_diff) / 100.0)
+                # print(f"eval of best move: {eval_best}, eval of chosen move: {eval_chosen}, diff: {eval_diff}")
 
-                # Cap the lowest bound of valid format responses so it doesn't drop far below zero format bounds
-                final_score = max(-2.0, reward_eval)
+                # Using a Sigmoid-like scaling function:
+                # A 'scaling_factor' of 200.0 means a 200cp (2 pawn) blunder
+                # results in a score of ~0.5.
+                # A 0cp diff always results in 1.0.
+                scaling_factor = 200.0
+                final_score = 1.0 / (1.0 + (eval_diff / scaling_factor))
+
+                # print(f"Final normalized score: {final_score}")
 
             # Apply length penalty
             response_tokens = len(
                 self.tokenizer.encode(item["messages"][-1]["content"])
             )
-            print(f"Response tokens: {response_tokens}")
+            """print(f"Response tokens: {response_tokens}")
+            print("Finished scoring prediction: final score (before length penalty): ", final_score)
+            """
 
             if response_tokens > self.config.max_token_length * 0.95:
                 final_score -= 0.5 * (response_tokens / self.config.max_token_length)
+            """print("Final score (after length penalty): ", final_score)
+            print("_" * 50)
+            print("\n\n")"""
 
             tokens = item["tokens"]
             masks = item["masks"]
