@@ -73,61 +73,62 @@ class ChessEnvConfig(BaseEnvConfig):
 
     # --- Engine Settings ---
     stockfish_depth: int = Field(
-        15, description="Search depth for Stockfish evaluation"
+        default=15, description="Search depth for Stockfish evaluation"
     )
     """Search depth for Stockfish evaluation."""
 
     engine_time_limit: float = Field(
-        0.2, description="Seconds allowed per move evaluation"
+        default=0.2, description="Seconds allowed per move evaluation"
     )
     """Seconds allowed per move evaluation."""
 
     reward_scaling_factor: float = Field(
-        200.0, description="Centipawn divisor for sigmoid reward"
+        default=200.0, description="Centipawn divisor for sigmoid reward"
     )
     """Centipawn divisor for sigmoid reward."""
 
     stockfish_path: str = Field(
-        os.getenv("STOCKFISH_PATH", "none"),
+        default=os.getenv("STOCKFISH_PATH", "none"),
         description="Path to executable stockfish engine. Set as an environment variable as: STOCKFISH_PATH",
     )
     """Path to executable stockfish engine. Set as an environment variable as: STOCKFISH_PATH."""
 
     max_concurrent_evals: int = Field(
-        8, description="Total number of engine instances initialized"
+        default=8, description="Total number of engine instances initialized"
     )
     """Total number of engine instances initialized in the engine pool."""
 
     # --- Penalties ---
     invalid_move_notation_reward: float = Field(
-        0.01, description="Reward assigned to moves with invalid notation"
+        default=0.01, description="Reward assigned to moves with invalid notation"
     )
     """Reward assigned to moves with invalid notation."""
 
     illegal_move_reward: float = Field(
-        0.1, description="Reward assigned to moves that are illegal"
+        default=0.1, description="Reward assigned to moves that are illegal"
     )
     """Reward assigned to moves that are illegal."""
 
     format_fail_reward: float = Field(
-        0.0, description="Reward assigned to invalid response formats"
+        default=0.0, description="Reward assigned to invalid response formats"
     )
     """Reward assigned to invalid response formats (e.g., missing tags)."""
 
     length_penalty_coefficient: float = Field(
-        0.5, description="Strength of the penalty for excessive response length"
+        default=0.5, description="Strength of the penalty for excessive response length"
     )
     """Strength of the penalty coefficient for excessive response length."""
 
     # --- Rollouts ---
     training_rollout_temperature: float = Field(
-        1.0,
+        default=1.0,
         description="High temperature for training rollouts to encourage exploration",
     )
     """High temperature for training rollouts to encourage exploration."""
 
     eval_rollout_temperature: float = Field(
-        0.0, description="Low temperature for eval rollouts for deterministic answers"
+        default=0.0,
+        description="Low temperature for eval rollouts for deterministic answers",
     )
     """Low temperature for eval rollouts for deterministic answers."""
 
@@ -142,7 +143,7 @@ class ChessEnvConfig(BaseEnvConfig):
             max_rating=3300,
             start_bucket="bucket:400-500",
             curr_bucket_lookup_prob=0.8,
-            dataset_percent_to_use=1.0,
+            dataset_percent_to_use=0.002,
             use_infinite_looping=False,
         ),
         description="Configuration for the training dataset",
@@ -154,9 +155,19 @@ class ChessEnvConfig(BaseEnvConfig):
             dataset_name="codingmonster1234/chess-puzzles-rlvr",
             split="validation",
             use_curriculum=False,
-            dataset_percent_to_use=1.0,
+            dataset_percent_to_use=0.02,
             use_infinite_looping=False,
         ),
         description="Configuration for the validation dataset",
     )
     """Configuration for the validation dataset settings."""
+
+    train_dataset_checkpoint_path: str = Field(
+        default=None, description="Path to training dataset state dict"
+    )
+    """Path to training dataset state dict"""
+
+    validation_dataset_checkpoint_path: str = Field(
+        default=None, description="Path to validation dataset state dict"
+    )
+    """Path to validation dataset state dict"""

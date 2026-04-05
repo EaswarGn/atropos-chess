@@ -50,7 +50,7 @@ class ChessEnv(BaseEnv):
     @classmethod
     def config_init(self) -> Tuple[ChessEnvConfig, List[APIServerConfig]]:
         env_config = ChessEnvConfig(
-            tokenizer_name="./base_model/checkpoint-168",
+            tokenizer_name="codingmonster1234/chess-sft-modelv2",
             group_size=8,
             use_wandb=False,
             max_num_workers=128,
@@ -67,7 +67,7 @@ class ChessEnv(BaseEnv):
         )
         server_configs = [
             APIServerConfig(
-                tokenizer_name="./base_model/checkpoint-168",
+                tokenizer_name="codingmonster1234/chess-sft-modelv2",
                 base_url="http://localhost:9001/v1",
                 api_key="x",
                 num_requests_for_eval=256,
@@ -91,6 +91,15 @@ class ChessEnv(BaseEnv):
 
         self.train = CurriculumManager(cfg=self.config.train_dataset_config)
         self.test = CurriculumManager(cfg=self.config.validation_dataset_config)
+
+        if self.config.train_dataset_checkpoint_path is not None:
+            with open(self.config.train_dataset_checkpoint_path, "r") as f:
+                train_state_dict = json.load(f)
+            self.train.load_state_dict(train_state_dict)
+        if self.config.validation_dataset_checkpoint_path is not None:
+            with open(self.config.validation_dataset_checkpoint_path, "r") as f:
+                validation_state_dict = json.load(f)
+            self.test.load_state_dict(validation_state_dict)
 
         rprint(
             f"Loaded dataset: [bold magenta]{len(self.train)}[/bold magenta] train | "
