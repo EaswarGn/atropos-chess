@@ -16,7 +16,7 @@ env:
   use_wandb: true
   rollout_server_url: "http://localhost:8000"
   total_steps: 300
-  wandb_name: "chess_puzzle_solving_rl"
+  wandb_name: "chess_puzzle_solving_env"
   num_rollouts_to_keep: 32
   num_rollouts_per_group_for_logging: -1
   ensure_scores_are_not_same: true
