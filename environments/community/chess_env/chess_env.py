@@ -440,8 +440,8 @@ class ChessEnv(BaseEnv):
     ) -> Dict[str, Union[int, float, None]]:
         """Rollout a single test item and score it for evaluation metrics."""
 
-        fen = test_item["fen"]
-        best_move = test_item["best_move"]
+        fen = test_item.fen
+        best_move = test_item.best_move
 
         messages = [
             {"role": "system", "content": test_item.prompt[0]["content"]},
@@ -480,6 +480,7 @@ class ChessEnv(BaseEnv):
                 "is_valid_move_notation": 0,
                 "length_penalty": length_penalty,
                 "final_reward": 0.0 - length_penalty,
+                "elo_solved": None,
             }
         if prediction == "INVALID_MOVE_FORMAT":
             return {
@@ -491,6 +492,7 @@ class ChessEnv(BaseEnv):
                 "is_valid_move_notation": 0,
                 "length_penalty": length_penalty,
                 "final_reward": 0.01 - length_penalty,
+                "elo_solved": None,
             }
         if prediction == "ILLEGAL_MOVE":
             return {
@@ -502,6 +504,7 @@ class ChessEnv(BaseEnv):
                 "is_valid_move_notation": 1,
                 "length_penalty": length_penalty,
                 "final_reward": 0.1 - length_penalty,
+                "elo_solved": None,
             }
 
         eval_best = await self.throttled_move_eval(fen, best_move)
@@ -520,6 +523,7 @@ class ChessEnv(BaseEnv):
             "is_valid_move_notation": 1,
             "length_penalty": length_penalty,
             "final_reward": eval_reward - length_penalty,
+            "elo_solved": test_item.rating if perfect_move == 1 else 0,
         }
 
     async def evaluate(self, *args, **kwargs):
@@ -536,6 +540,11 @@ class ChessEnv(BaseEnv):
         perfect_moves = [score["perfect_move"] for score in all_scores]
         length_penalties = [score["length_penalty"] for score in all_scores]
         final_rewards = [score["final_reward"] for score in all_scores]
+        elo_solveds = [
+            score["elo_solved"]
+            for score in all_scores
+            if score["elo_solved"] is not None
+        ]
 
         format_accuracy = (
             sum(format_corrects) / len(format_corrects) if format_corrects else 0
@@ -559,6 +568,7 @@ class ChessEnv(BaseEnv):
             sum(final_rewards) / len(final_rewards) if final_rewards else 0
         )
         avg_eval_reward = sum(eval_rewards) / len(eval_rewards) if eval_rewards else 0
+        avg_elo_solved = sum(elo_solveds) / len(elo_solveds) if elo_solveds else 0
 
         self.eval_metrics.append(("eval/format_accuracy", format_accuracy))
         self.eval_metrics.append(("eval/legal_move_accuracy", legal_move_accuracy))
@@ -570,6 +580,7 @@ class ChessEnv(BaseEnv):
         self.eval_metrics.append(("eval/avg_length_penalty", avg_length_penalty))
         self.eval_metrics.append(("eval/avg_final_reward", avg_final_reward))
         self.eval_metrics.append(("eval/avg_eval_reward", avg_eval_reward))
+        self.eval_metrics.append(("eval/avg_elo_solved", avg_elo_solved))
 
     async def wandb_log(self, wandb_metrics: Optional[Dict] = None):
         if wandb_metrics is None:
