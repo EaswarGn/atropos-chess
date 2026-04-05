@@ -1,5 +1,6 @@
 import asyncio
 import json
+import os
 import random
 import re
 from typing import Dict, List, Optional, Tuple, Union
@@ -21,6 +22,7 @@ from atroposlib.envs.base import (
     BaseEnv,
     EvalHandlingEnum,
     ScoredDataGroup,
+    logger,
 )
 
 from .chess_env_types import ChessPuzzleItem
@@ -155,6 +157,63 @@ class ChessEnv(BaseEnv):
             )
 
         self.iter = 0
+
+    def save_checkpoint(self, step, data=None):
+        super().save_checkpoint(step, data=data)
+
+        logger.info(f"Train data state: {str(self.train)}")
+        logger.info(f"Validation data state: {str(self.test)}")
+
+        ckpt_dir = os.path.join(
+            self.checkpoint_dir, "dataset_checkpoints", self.wandb_prepend
+        )
+        # create directory if necessary
+        os.makedirs(ckpt_dir, exist_ok=True)
+        ckpt_path = os.path.join(
+            self.checkpoint_dir,
+            "dataset_checkpoints",
+            self.wandb_prepend,
+            f"step-{step}.json",
+        )
+        os.makedirs(os.path.dirname(ckpt_path), exist_ok=True)
+
+        # save only the dataset to checkpoint, model saving is handled by trainer
+        with open(ckpt_path, "w") as f:
+            json.dump([self.train.state_dict(), self.test.state_dict()], f)
+
+    def load_checkpoint(self):
+        super().load_checkpoint(self)
+
+        if self.config.train_dataset_checkpoint_path:
+            path = self.config.train_dataset_checkpoint_path
+            if os.path.exists(path):
+                rprint(
+                    f"[bold cyan]Loading Train Dataset checkpoint from:[/bold cyan] {path}"
+                )
+                with open(path, "r") as f:
+                    # Your save_checkpoint saves a LIST: [train_dict, test_dict]
+                    full_state = json.load(f)
+
+                    self.train.load_state_dict(full_state[0])
+            else:
+                rprint(
+                    f"[bold yellow]Warning:[/bold yellow] Train checkpoint path {path} not found."
+                )
+
+        if self.config.validation_dataset_checkpoint_path:
+            path = self.config.validation_dataset_checkpoint_path
+            if os.path.exists(path):
+                rprint(
+                    f"[bold magenta]Loading Validation Dataset checkpoint from:[/bold magenta] {path}"
+                )
+                with open(path, "r") as f:
+                    full_state = json.load(f)
+                    # Use the second element for validation
+                    self.test.load_state_dict(full_state[1])
+            else:
+                rprint(
+                    f"[bold yellow]Warning:[/bold yellow] Validation checkpoint path {path} not found."
+                )
 
     async def get_next_item(self) -> ChessPuzzleItem:
         """
