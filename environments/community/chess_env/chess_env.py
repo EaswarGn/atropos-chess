@@ -9,6 +9,7 @@ import chess
 import chess.engine
 from rich import print as rprint
 from tqdm.asyncio import tqdm_asyncio
+from transformers import PreTrainedTokenizer, PreTrainedTokenizerFast
 
 # from transformers import AutoTokenizer
 from atroposlib.envs.base import (
@@ -25,6 +26,10 @@ from .types import ChessPuzzleItem
 
 
 class ChessEnv(BaseEnv):
+
+    config: ChessEnvConfig
+    tokenizer: Union[PreTrainedTokenizer, PreTrainedTokenizerFast]
+
     def __init__(
         self,
         config: ChessEnvConfig,
@@ -39,7 +44,7 @@ class ChessEnv(BaseEnv):
         self.eval_metrics = list()
         self.engine = None
         self.eval_semaphore = asyncio.Semaphore(self.config.max_concurrent_evals)
-        self.engine_pool = asyncio.Queue()
+        self.engine_pool: asyncio.Queue[chess.engine.UciProtocol] = asyncio.Queue()
 
     @classmethod
     def config_init(self) -> Tuple[ChessEnvConfig, List[APIServerConfig]]:
@@ -110,7 +115,7 @@ class ChessEnv(BaseEnv):
         except Exception as e:
             rprint(
                 f"[bold red]Error:[/bold red] Could not start [bold cyan]Stockfish[/bold cyan]. "
-                f"Check path: [yellow]{self.stockfish_path}[/yellow]\n[red]{e}[/red]"
+                f"Check path: [yellow]{self.config.stockfish_path}[/yellow]\n[red]{e}[/red]"
             )
 
         self.iter = 0
@@ -234,7 +239,9 @@ class ChessEnv(BaseEnv):
         # Return just the cleaned inner text from the answer block
         return model_move_str
 
-    async def _get_move_eval(self, engine, fen: str, move_str: str) -> float:
+    async def _get_move_eval(
+        self, engine: chess.engine.UciProtocol, fen: str, move_str: str
+    ) -> float:
         """
         Evaluate a move in centipawns using Stockfish.
         Returns positive score if the move is good for the player to move, negative if bad.

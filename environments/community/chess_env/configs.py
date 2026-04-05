@@ -6,7 +6,7 @@ from atroposlib.envs.base import BaseEnvConfig
 
 
 class DatasetConfig(BaseModel):
-    """Configuration for managing curriculum learning sdataset."""
+    """Configuration for managing curriculum learning datasets."""
 
     dataset_name: str = Field(
         default="codingmonster1234/chess-puzzles-rlvr",
@@ -53,7 +53,7 @@ class DatasetConfig(BaseModel):
         default=0.8,
         description="Probability of returning a puzzle from current bucket for the current item vs a previous bucket.",
     )
-    """The probability of returning a puzzle from current bucket for the current item vs a previous bucket."""
+    """Probability of returning a puzzle from current bucket for the current item vs a previous bucket."""
 
     dataset_percent_to_use: float = Field(
         default=1.0,
@@ -75,42 +75,61 @@ class ChessEnvConfig(BaseEnvConfig):
     stockfish_depth: int = Field(
         15, description="Search depth for Stockfish evaluation"
     )
+    """Search depth for Stockfish evaluation."""
+
     engine_time_limit: float = Field(
         0.2, description="Seconds allowed per move evaluation"
     )
+    """Seconds allowed per move evaluation."""
+
     reward_scaling_factor: float = Field(
         200.0, description="Centipawn divisor for sigmoid reward"
     )
+    """Centipawn divisor for sigmoid reward."""
+
     stockfish_path: str = Field(
         os.getenv("STOCKFISH_PATH", "none"),
         description="Path to executable stockfish engine. Set as an environment variable as: STOCKFISH_PATH",
     )
+    """Path to executable stockfish engine. Set as an environment variable as: STOCKFISH_PATH."""
+
     max_concurrent_evals: int = Field(
         8, description="Total number of engine instances initialized"
     )
+    """Total number of engine instances initialized in the engine pool."""
 
     # --- Penalties ---
     invalid_move_notation_reward: float = Field(
         0.01, description="Reward assigned to moves with invalid notation"
     )
+    """Reward assigned to moves with invalid notation."""
+
     illegal_move_reward: float = Field(
         0.1, description="Reward assigned to moves that are illegal"
     )
+    """Reward assigned to moves that are illegal."""
+
     format_fail_reward: float = Field(
         0.0, description="Reward assigned to invalid response formats"
     )
+    """Reward assigned to invalid response formats (e.g., missing tags)."""
+
     length_penalty_coefficient: float = Field(
         0.5, description="Strength of the penalty for excessive response length"
     )
+    """Strength of the penalty coefficient for excessive response length."""
 
     # --- Rollouts ---
     training_rollout_temperature: float = Field(
         1.0,
         description="High temperature for training rollouts to encourage exploration",
     )
+    """High temperature for training rollouts to encourage exploration."""
+
     eval_rollout_temperature: float = Field(
         0.0, description="Low temperature for eval rollouts for deterministic answers"
     )
+    """Low temperature for eval rollouts for deterministic answers."""
 
     # --- Datasets ---
     train_dataset_config: DatasetConfig = Field(
@@ -128,6 +147,7 @@ class ChessEnvConfig(BaseEnvConfig):
         ),
         description="Configuration for the training dataset",
     )
+    """Configuration for the training dataset and curriculum settings."""
 
     validation_dataset_config: DatasetConfig = Field(
         default_factory=lambda: DatasetConfig(
@@ -139,3 +159,4 @@ class ChessEnvConfig(BaseEnvConfig):
         ),
         description="Configuration for the validation dataset",
     )
+    """Configuration for the validation dataset settings."""
