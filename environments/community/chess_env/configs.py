@@ -1,6 +1,7 @@
 import os
 
 from pydantic import BaseModel, Field
+from typing import Optional
 
 from atroposlib.envs.base import BaseEnvConfig
 
@@ -155,19 +156,19 @@ class ChessEnvConfig(BaseEnvConfig):
             dataset_name="codingmonster1234/chess-puzzles-rlvr",
             split="validation",
             use_curriculum=False,
-            dataset_percent_to_use=0.02,
+            dataset_percent_to_use=0.002,
             use_infinite_looping=False,
         ),
         description="Configuration for the validation dataset",
     )
     """Configuration for the validation dataset settings."""
 
-    train_dataset_checkpoint_path: str = Field(
+    train_dataset_checkpoint_path: Optional[str] = Field(
         default=None, description="Path to training dataset state dict"
     )
     """Path to training dataset state dict"""
 
-    validation_dataset_checkpoint_path: str = Field(
+    validation_dataset_checkpoint_path: Optional[str] = Field(
         default=None, description="Path to validation dataset state dict"
     )
     """Path to validation dataset state dict"""
