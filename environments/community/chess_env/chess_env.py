@@ -45,6 +45,7 @@ class ChessEnv(BaseEnv):
         self.engine = None
         self.eval_semaphore = asyncio.Semaphore(self.config.max_concurrent_evals)
         self.engine_pool: asyncio.Queue[chess.engine.UciProtocol] = asyncio.Queue()
+        self.dataset_lock = asyncio.Lock()
 
     @classmethod
     def config_init(self) -> Tuple[ChessEnvConfig, List[APIServerConfig]]:
@@ -143,8 +144,16 @@ class ChessEnv(BaseEnv):
         """
         Get the next training item from the dataset.
         """
-        item = self.train.get_next_item()
-        return item
+        # Use a lock to prevent concurrent access to the CurriculumManager
+        async with self.dataset_lock:
+            # Run the synchronous manager in a thread to avoid blocking the loop
+            try:
+                return await asyncio.to_thread(self.train.get_next_item)
+            except StopIteration:
+                rprint(
+                    "[yellow]Dataset exhausted. Wrapping up or restarting...[/yellow]"
+                )
+                return None
 
     async def collect_trajectories(
         self, item: ChessPuzzleItem
