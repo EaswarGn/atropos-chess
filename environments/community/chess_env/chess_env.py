@@ -1,6 +1,5 @@
 import asyncio
 import json
-import os
 import random
 import re
 from typing import Dict, List, Optional, Tuple, Union
@@ -22,7 +21,6 @@ from atroposlib.envs.base import (
     BaseEnv,
     EvalHandlingEnum,
     ScoredDataGroup,
-    logger,
 )
 
 from .chess_env_types import ChessPuzzleItem
@@ -157,25 +155,6 @@ class ChessEnv(BaseEnv):
             )
 
         self.iter = 0
-
-    def save_checkpoint(self, step, data=None):
-        logger.info("Saving checkpoint at step %s with data %s", step, data)
-        ckpt_dir = os.path.join(
-            self.checkpoint_dir, "env_checkpoints", self.wandb_prepend
-        )
-        # create directory if necessary
-        os.makedirs(ckpt_dir, exist_ok=True)
-        ckpt_path = os.path.join(
-            self.checkpoint_dir,
-            "env_checkpoints",
-            self.wandb_prepend,
-            f"step-{step}.json",
-        )
-        os.makedirs(os.path.dirname(ckpt_path), exist_ok=True)
-
-        # save only the dataset to checkpoint, model saving is handled by trainer
-        with open(ckpt_path, "w") as f:
-            json.dump([self.train.state_dict(), self.test.state_dict()], f)
 
     async def get_next_item(self) -> ChessPuzzleItem:
         """
