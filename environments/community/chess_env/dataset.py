@@ -2,100 +2,19 @@ import bisect
 import json
 import random
 from collections.abc import Iterator
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List
 
 import chess
-from prompts import (
-    SYSTEM_PROMPT,
-    USER_PROMPT_TEMPLATE,
-)
 from datasets import load_dataset
-from pydantic import BaseModel, Field
 from rich.console import Console
 from rich.syntax import Syntax
 
-
-class ChessPuzzleItem(BaseModel):
-    prompt: Tuple[Any, ...] = Field(
-        description="The conversation history as a tuple of frozensets."
-    )
-    """The conversation history as a tuple of frozensets."""
-
-    best_move: str = Field(description="The UCI string of the winning move.")
-    """The UCI string of the winning move."""
-
-    rating: int = Field(description="The Elo rating of the puzzle.")
-    """The Elo rating of the puzzle."""
-
-    fen: str = Field(description="The FEN position before the best move.")
-    """The FEN position before the best move."""
-
-    tags: List[str] = Field(
-        default_factory=list, description="List of tactical themes (e.g., 'fork')."
-    )
-    """List of tactical themes (e.g., 'fork')."""
-
-
-class DatasetConfig(BaseModel):
-
-    dataset_name: str = Field(
-        default="codingmonster1234/chess-puzzles-rlvr",
-        description="The Hugging Face hub path or local path to the dataset (e.g., 'username/repo').",
-    )
-    """The Hugging Face hub path or local path to the dataset (e.g., 'username/repo')."""
-
-    split: str = Field(
-        default="train",
-        description="The specific dataset split to load (e.g., 'train', 'test', or 'validation').",
-    )
-    """The specific dataset split to load (e.g., 'train', 'test', or 'validation')."""
-
-    use_curriculum: bool = Field(
-        default=True,
-        description="Whether to enable progressive difficulty scaling during training.",
-    )
-    """Whether to enable progressive difficulty scaling during training."""
-
-    bucket_size: int = Field(
-        default=100,
-        description="The rating range span for each bucket (e.g., 100 for bins like 400-500, 500-600).",
-    )
-    """The rating range span for each bucket (e.g., 100 for bins like 400-500, 500-600)."""
-
-    min_rating: int = Field(
-        default=400,
-        description="The floor rating to begin bucketing (smallest is 400).",
-    )
-    """The floor rating to begin bucketing (smallest is 400)."""
-
-    max_rating: int = Field(
-        default=3300, description="The ceiling rating to end bucketing (max 3300)."
-    )
-    """The ceiling rating to end bucketing (max 3300)."""
-
-    start_bucket: str = Field(
-        default="bucket:400-500",
-        description="The initial bucket key to start training from (e.g., 'bucket:400-500').",
-    )
-    """The initial bucket key to start training from (e.g., 'bucket:400-500')."""
-
-    curr_bucket_lookup_prob: float = Field(
-        default=0.8,
-        description="Probability of returning a puzzle from current bucket for the current item vs a previous bucket.",
-    )
-    """The probability of returning a puzzle from current bucket for the current item vs a previous bucket."""
-
-    dataset_percent_to_use: float = Field(
-        default=1.0,
-        description="The percentage of the dataset to utilize (e.g., 0.5 for 50%).",
-    )
-    """The percentage of the dataset to utilize (e.g., 0.5 for 50%)."""
-
-    use_infinite_looping: bool = Field(
-        default=False,
-        description="Whether to enable infinite looping over the dataset for continuous training.",
-    )
-    """Whether to enable infinite looping over the dataset for continuous training."""
+from .configs import DatasetConfig
+from .prompts import (
+    SYSTEM_PROMPT,
+    USER_PROMPT_TEMPLATE,
+)
+from .types import ChessPuzzleItem
 
 
 class CurriculumManager:
