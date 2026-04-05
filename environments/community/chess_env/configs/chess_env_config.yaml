@@ -55,7 +55,7 @@ env:
     max_rating: 3300
     start_bucket: "bucket:400-500"
     curr_bucket_lookup_prob: 0.85
-    dataset_percent_to_use: 0.1
+    dataset_percent_to_use: 0.001
     use_infinite_looping: true
 
   # --- Validation Dataset Configuration ---
@@ -63,7 +63,7 @@ env:
     dataset_name: "codingmonster1234/chess-puzzles-rlvr"
     split: "validation"
     use_curriculum: false
-    dataset_percent_to_use: 0.005
+    dataset_percent_to_use: 0.002
     use_infinite_looping: false
 
   # --- Checkpoints & Data Paths ---

@@ -7,14 +7,12 @@ from typing import Dict, List, Optional, Tuple, Union
 
 import chess
 import chess.engine
-
+from rich import box
 from rich import print as rprint
-from rich.table import Table
+from rich.columns import Columns
 from rich.console import Console
 from rich.panel import Panel
-from rich.columns import Columns
-from rich import box
-
+from rich.table import Table
 from tqdm.asyncio import tqdm_asyncio
 from transformers import PreTrainedTokenizer, PreTrainedTokenizerFast
 
@@ -65,7 +63,7 @@ class ChessEnv(BaseEnv):
             max_num_workers=128,
             rollout_server_url="http://localhost:8000",
             total_steps=100,
-            batch_size=2,
+            batch_size=8,
             steps_per_eval=20,
             max_token_length=1024 * 4,
             inference_weight=1.0,
@@ -90,10 +88,9 @@ class ChessEnv(BaseEnv):
         """
         Set up the environment by loading the dataset and starting Stockfish.
         """
-        
-        
+
         rprint("[yellow]Loading Dataset...[/yellow]")
-        
+
         self.train = CurriculumManager(cfg=self.config.train_dataset_config)
         self.test = CurriculumManager(cfg=self.config.validation_dataset_config)
 
@@ -117,12 +114,22 @@ class ChessEnv(BaseEnv):
 
         # Wrap them in nested panels for a "Dashboard" look
         summary_panel = Panel(
-            Columns([
-                Panel(train_info, title="[bold white]Train Set[/bold white]", border_style="cyan"),
-                Panel(test_info, title="[bold white]Test Set[/bold white]", border_style="magenta"),
-            ]),
+            Columns(
+                [
+                    Panel(
+                        train_info,
+                        title="[bold white]Train Set[/bold white]",
+                        border_style="cyan",
+                    ),
+                    Panel(
+                        test_info,
+                        title="[bold white]Test Set[/bold white]",
+                        border_style="magenta",
+                    ),
+                ]
+            ),
             title="[bold green]Dataset Loaded Successfully[/bold green]",
-            expand=False
+            expand=False,
         )
 
         rprint(summary_panel)
@@ -316,7 +323,7 @@ class ChessEnv(BaseEnv):
             return
 
         rprint("[bold red]Shutting down Stockfish engine pool...[/bold red]")
-        
+
         pool = cls._instance.engine_pool
         while not pool.empty():
             try:
@@ -324,9 +331,9 @@ class ChessEnv(BaseEnv):
                 await engine.quit()
             except Exception as e:
                 rprint(f"[dim red]Error closing an engine: {e}[/dim red]")
-        
+
         rprint("[green]All engines shut down successfully.[/green]")
-        cls._instance = None # Reset tracker
+        cls._instance = None  # Reset tracker
 
     async def throttled_move_eval(self, fen: str, move_str: str) -> float:
         async with (
@@ -474,7 +481,7 @@ class ChessEnv(BaseEnv):
 
         fen = test_item.fen
         best_move = test_item.best_move
-        
+
         messages = []
         for role_dict in test_item.prompt:
             messages.append(dict(role_dict))
@@ -559,7 +566,9 @@ class ChessEnv(BaseEnv):
 
     async def evaluate(self, *args, **kwargs):
         eval_tasks = [self.rollout_and_score_eval(test_item) for test_item in self.test]
-        all_scores = await tqdm_asyncio.gather(*eval_tasks, desc="Scoring model responses")
+        all_scores = await tqdm_asyncio.gather(
+            *eval_tasks, desc="Scoring model responses"
+        )
 
         format_corrects = [score["format_correct"] for score in all_scores]
         is_legal_moves = [score["is_legal_move"] for score in all_scores]
@@ -576,7 +585,7 @@ class ChessEnv(BaseEnv):
             for score in all_scores
             if score["elo_solved"] is not None
         ]
-        
+
         format_accuracy = (
             sum(format_corrects) / len(format_corrects) if format_corrects else 0
         )
@@ -600,7 +609,7 @@ class ChessEnv(BaseEnv):
         )
         avg_eval_reward = sum(eval_rewards) / len(eval_rewards) if eval_rewards else 0
         avg_elo_solved = sum(elo_solveds) / len(elo_solveds) if elo_solveds else 0
-        
+
         metrics_to_add = [
             ("eval/format_accuracy", format_accuracy),
             ("eval/legal_move_accuracy", legal_move_accuracy),
@@ -612,25 +621,25 @@ class ChessEnv(BaseEnv):
             ("eval/avg_eval_reward", avg_eval_reward),
             ("eval/avg_elo_solved", avg_elo_solved),
         ]
-        
+
         for name, val in metrics_to_add:
             self.eval_metrics.append((name, val))
-        
+
         self.print_metrics_summary()
-        
+
     def print_metrics_summary(self):
         """Prints the eval_metrics list in a structured Rich table."""
-        
+
         console = Console()
-        
+
         table = Table(
-            title="[bold blue]Chess Environment Evaluation Summary[/bold blue]", 
-            show_header=True, 
+            title="[bold blue]Chess Environment Evaluation Summary[/bold blue]",
+            show_header=True,
             header_style="bold magenta",
             box=box.DOUBLE_EDGE,
-            show_footer=True
+            show_footer=True,
         )
-        
+
         table.add_column("Category", style="cyan", no_wrap=True)
         table.add_column("Metric", style="white")
         table.add_column("Value", justify="right")
@@ -638,13 +647,14 @@ class ChessEnv(BaseEnv):
         for name, value in self.eval_metrics:
             # Split "eval/accuracy" into "eval" and "accuracy"
             category, metric_name = name.split("/") if "/" in name else ("misc", name)
-            
+
             # Color coding logic
             if isinstance(value, float):
                 val_str = f"{value:.4f}"
                 # Green for high accuracy, Red for high pawn loss
                 color = "green" if (value > 0.8 and "accuracy" in name) else "white"
-                if "eval_diff" in name and value > 1.5: color = "red"
+                if "eval_diff" in name and value > 1.5:
+                    color = "red"
             else:
                 val_str = str(value)
                 color = "white"
@@ -654,8 +664,6 @@ class ChessEnv(BaseEnv):
         console.print("\n")
         console.print(table)
         console.print("\n")
-        
-        
 
     async def wandb_log(self, wandb_metrics: Optional[Dict] = None):
         if wandb_metrics is None:
@@ -675,13 +683,16 @@ def main():
         rprint(f"[bold red]\n[!] Critical error: {e}[/bold red]")
         raise e
     finally:
-        rprint("[bold yellow]\n[System] Entry point finished. Initiating final cleanup...[/bold yellow]")
+        rprint(
+            "[bold yellow]\n[System] Entry point finished. Initiating final cleanup...[/bold yellow]"
+        )
         try:
             # This now works because shutdown is a @classmethod
             asyncio.run(ChessEnv.shutdown())
             rprint("[bold yellow]Cleanup finished.[/bold yellow]")
         except Exception as cleanup_err:
             rprint(f"[red]Cleanup failed: {cleanup_err}[/red]")
+
 
 if __name__ == "__main__":
     main()
