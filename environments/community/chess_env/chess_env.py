@@ -20,9 +20,9 @@ from atroposlib.envs.base import (
     logger,
 )
 
+from .chess_env_types import ChessPuzzleItem
 from .configs import ChessEnvConfig
 from .dataset import CurriculumManager
-from .types import ChessPuzzleItem
 
 
 class ChessEnv(BaseEnv):

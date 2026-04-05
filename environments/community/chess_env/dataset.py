@@ -9,12 +9,12 @@ from datasets import load_dataset
 from rich.console import Console
 from rich.syntax import Syntax
 
+from .chess_env_types import ChessPuzzleItem
 from .configs import DatasetConfig
 from .prompts import (
     SYSTEM_PROMPT,
     USER_PROMPT_TEMPLATE,
 )
-from .types import ChessPuzzleItem
 
 
 class CurriculumManager:
