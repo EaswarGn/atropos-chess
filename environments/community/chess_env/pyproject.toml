@@ -8,6 +8,8 @@ dependencies = [
     "atroposlib[dev]>=0.4.0",
     "chess>=1.11.2",
     "gradio>=6.11.0",
+    "tinker>=0.16.1",
+    "tinker-cookbook>=0.2.2",
     "torch>=2.11.0",
 ]
 
