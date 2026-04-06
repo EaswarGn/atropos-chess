@@ -3,6 +3,7 @@ import json
 import os
 import random
 import re
+import sys
 from typing import Dict, List, Optional, Tuple, Union
 
 import chess
@@ -148,7 +149,7 @@ class ChessEnv(BaseEnv):
                 self.engine_pool.put_nowait(engine)
 
             rprint(
-                f"[bold cyan]{max_engines} Stockfish[/bold cyan] engine(s) [green]initialized successfully\n[/green]."
+                f"[bold cyan]{max_engines} Stockfish[/bold cyan] engine(s) [green]initialized successfully\n[/green]"
             )
         except Exception as e:
             rprint(
@@ -183,7 +184,7 @@ class ChessEnv(BaseEnv):
         rprint("[green]Training and validation dataset dicts saved.[/green]")
 
     def load_checkpoint(self):
-        super().load_checkpoint(self)
+        super().load_checkpoint()
 
         if self.config.train_dataset_checkpoint_path:
             path = self.config.train_dataset_checkpoint_path
@@ -286,7 +287,7 @@ class ChessEnv(BaseEnv):
 
         return scored_data, to_backlog
 
-    def _extract_prediction(self, rollout_item: ChessPuzzleItem, model_response: str):
+    def _extract_prediction(self, rollout_item, model_response: str):
         """
         Extract the chess move from the <answer> tags, ensuring <think> is present.
         """
@@ -306,7 +307,7 @@ class ChessEnv(BaseEnv):
         model_move_str = answer_match.group(1).strip()
 
         # check if model move is legal
-        board = chess.Board(rollout_item.fen)
+        board = chess.Board(rollout_item["fen"])
         try:
             # Try SAN first (e.g., "Nf3")
             move = board.parse_san(model_move_str)
@@ -356,23 +357,29 @@ class ChessEnv(BaseEnv):
 
     @classmethod
     async def shutdown(cls):
-        """Class method to shut down engines of the active instance."""
-        if cls._instance is None:
-            rprint("[yellow]No active ChessEnv instance found to shut down.[/yellow]")
+        if not hasattr(cls, "engine_pool") or not cls.engine_pool:
             return
 
         rprint("[bold red]Shutting down Stockfish engine pool...[/bold red]")
 
-        pool = cls._instance.engine_pool
-        while not pool.empty():
-            try:
-                engine = await pool.get()
-                await engine.quit()
-            except Exception as e:
-                rprint(f"[dim red]Error closing an engine: {e}[/dim red]")
+        tasks = []
+        for engine in cls.engine_pool:
+            if engine:
+                # We wrap the quit call in a protected task
+                tasks.append(engine.quit())
 
+        if tasks:
+            # return_exceptions=True prevents the "Different Loop" error
+            # from bubbling up as a traceback. It just returns the error as a value.
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+
+            # Log only actual errors, ignoring "Loop Closed" noise
+            for res in results:
+                if isinstance(res, Exception) and "loop" not in str(res).lower():
+                    rprint(f"[red]Minor engine cleanup note: {res}[/red]")
+
+        cls.engine_pool = []
         rprint("[green]All engines shut down successfully.[/green]")
-        cls._instance = None  # Reset tracker
 
     async def throttled_move_eval(self, fen: str, move_str: str) -> float:
         async with (
@@ -717,20 +724,39 @@ class ChessEnv(BaseEnv):
 
 def main():
     try:
+        # Assuming .cli() internally runs an event loop (e.g., via uvicorn or asyncio.run)
         ChessEnv.cli()
+    except KeyboardInterrupt:
+        rprint("[yellow]\n[!] Interrupted by user. Shutting down...[/yellow]")
     except Exception as e:
         rprint(f"[bold red]\n[!] Critical error: {e}[/bold red]")
-        raise e
+        # Don't raise here if you want 'finally' to handle a clean exit
     finally:
         rprint(
             "[bold yellow]\n[System] Entry point finished. Initiating final cleanup...[/bold yellow]"
         )
+
         try:
-            # This now works because shutdown is a @classmethod
-            asyncio.run(ChessEnv.shutdown())
-            rprint("[bold yellow]Cleanup finished.[/bold yellow]")
+            # Get the current running loop or create a new one
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+
+            if loop.is_running():
+                # If the loop is already running, we schedule the task
+                loop.create_task(ChessEnv.shutdown())
+            else:
+                # If the loop exists but isn't running, run the shutdown to completion
+                loop.run_until_complete(ChessEnv.shutdown())
+
+            rprint("[bold green]Cleanup finished.[/bold green]")
         except Exception as cleanup_err:
             rprint(f"[red]Cleanup failed: {cleanup_err}[/red]")
+        finally:
+            # Final safety kill for any orphaned Stockfish processes
+            sys.exit(0)
 
 
 if __name__ == "__main__":
