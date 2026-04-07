@@ -74,18 +74,18 @@ env:
 
 # === vLLM / OpenAI Server Configurations ===
 openai:
-  model_name: "codingmonster1234/chess-sft-modelv2"
-  tokenizer_name: "codingmonster1234/chess-sft-modelv2"
-  server_type: "vllm"
-  base_url: "http://localhost:9001/v1"
-  api_key: "x"
-  timeout: 1200
-  num_max_requests_at_once: 512
-  num_requests_for_eval: 256
-  rolling_buffer_length: 1000
-  n_kwarg_is_ignored: false
-  health_check: true
-  weight: 1.0
+  - model_name: "codingmonster1234/chess-sft-modelv2"
+    tokenizer_name: "codingmonster1234/chess-sft-modelv2"
+    server_type: "vllm"
+    base_url: "http://localhost:8001/v1"
+    api_key: "x"
+    timeout: 1200
+    num_max_requests_at_once: 512
+    num_requests_for_eval: 256
+    rolling_buffer_length: 1000
+    n_kwarg_is_ignored: false
+    health_check: true
+    weight: 1.0
 
 # === Global Flags ===
 slurm: false
@@ -98,6 +98,7 @@ tinker:
   learning_rate: 0.00004
   max_token_trainer_length: 4096
   checkpoint_dir: "./tinker_model_checkpoints/"
+  tinker_pretrained_weights: "tinker://fe1c5bb0-bf01-52e5-b5b3-03c9acd17c9b:train:0/weights/final"
   save_checkpoint_interval: 20
 
   # Wandb configuration for trainer

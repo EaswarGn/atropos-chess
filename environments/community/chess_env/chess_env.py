@@ -253,6 +253,7 @@ class ChessEnv(BaseEnv):
                 n=self.config.group_size,
                 max_tokens=self.config.max_token_length,
                 temperature=1.0,
+                stop=[self.tokenizer.eos_token_id]
             )
 
             state = managed.get_state()
@@ -542,6 +543,7 @@ class ChessEnv(BaseEnv):
                 n=1,
                 max_tokens=self.config.max_token_length,
                 temperature=0.0,
+                stop=[self.tokenizer.eos_token_id]
             )
 
         model_response = completion.choices[0].text
