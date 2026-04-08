@@ -70,7 +70,7 @@ env:
   train_dataset_checkpoint_path: null
   validation_dataset_checkpoint_path: null
   data_path_to_save_groups: "chess_env/rollouts/chess_env_rollout_groups.jsonl"
-  data_dir_to_save_evals: "chess_env_eval_results"
+  data_dir_to_save_evals: "chess_env/chess_env_eval_results"
 
 # === vLLM / OpenAI Server Configurations ===
 openai:
