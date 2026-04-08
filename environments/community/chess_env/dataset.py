@@ -8,7 +8,6 @@ import chess
 from datasets import load_dataset
 from rich.console import Console
 from rich.syntax import Syntax
-import numpy as np
 
 from .chess_env_types import ChessPuzzleItem
 from .configs import DatasetConfig
@@ -23,9 +22,6 @@ class CurriculumManager:
         self.cfg = cfg
 
         self.dataset = load_dataset(self.cfg.dataset_name, split=self.cfg.split)
-        
-        self.avg_dataset_elo = 0
-        self.ratings_array = np.array(self.dataset["rating"])
 
         self.len = 0  # length of the dataset (after applying percentage filter)
 
@@ -34,9 +30,6 @@ class CurriculumManager:
             num_samples = int(len(full_range) * self.cfg.dataset_percent_to_use)
             self.indices = random.sample(full_range, num_samples)
             self.len = len(self.indices)
-            
-            sampled_ratings = self.ratings_array[self.indices]
-            self.avg_dataset_elo = np.mean(sampled_ratings)
 
         if self.cfg.split == "train":
             if self.cfg.use_curriculum is True:
@@ -49,13 +42,9 @@ class CurriculumManager:
                 num_samples = int(len(full_range) * self.cfg.dataset_percent_to_use)
                 self.indices = random.sample(full_range, num_samples)
                 self.len = len(self.indices)
-                
-                sampled_ratings = self.ratings_array[self.indices]
-                self.avg_dataset_elo = np.mean(sampled_ratings)
-                
+
         self.n = 0  # counter for how many puzzles have been served so far
         self.curr_idx = 0  # pointer to the current position in the dataset
-        
 
     "______Dunder Methods______"
 
@@ -127,7 +116,31 @@ class CurriculumManager:
         return item
 
     def __getitem__(self, idx: int):
-        return self.dataset[idx]
+
+        row = self.dataset[idx]
+        board = chess.Board(row["fen"])
+        best_move = row["uci_moves"][0]
+
+        user_prompt = USER_PROMPT_TEMPLATE.format(
+            fen_string=row["fen"],
+            ascii_board=str(board),
+            legal_moves_list=", ".join(board.san(move) for move in board.legal_moves),
+            turn=row["turn"],
+        )
+
+        prompt = []
+        prompt.append(frozenset({"role": "system", "content": SYSTEM_PROMPT}.items()))
+        prompt.append(frozenset({"role": "user", "content": user_prompt}.items()))
+
+        self.n += 1
+
+        return ChessPuzzleItem(
+            prompt=tuple(prompt),
+            best_move=best_move,
+            rating=row["rating"],
+            fen=row["fen"],
+            tags=row["tags"],
+        )
 
     "______End of Dunder Methods______"
 
@@ -193,12 +206,6 @@ class CurriculumManager:
 
         total_indices = sum(len(indices) for indices in self.buckets.values())
         self.len = total_indices
-        
-        
-        #Get the average elo of the dataset:
-        all_sampled_indices = [idx for bucket in self.buckets.values() for idx in bucket]
-        sampled_ratings = self.ratings_array[all_sampled_indices]
-        self.avg_dataset_elo = np.mean(sampled_ratings)
 
     def get_all_previous_buckets(self, current_bucket_key: str) -> List[str]:
         valid_prev_buckets = []

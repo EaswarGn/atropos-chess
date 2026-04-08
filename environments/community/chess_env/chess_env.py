@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 import os
 import random
 import re
@@ -35,7 +36,6 @@ class ChessEnv(BaseEnv):
 
     config: ChessEnvConfig
     tokenizer: Union[PreTrainedTokenizer, PreTrainedTokenizerFast]
-    _instance = None  # Track the active instance for cleanup
 
     def __init__(
         self,
@@ -48,7 +48,6 @@ class ChessEnv(BaseEnv):
         Initialize the Chess reasoning and playing environment.
         """
         super().__init__(config, server_configs, slurm, testing)
-        ChessEnv._instance = self  # Store reference to this instance
         self.eval_metrics = list()
         self.engine = None
         self.eval_semaphore = asyncio.Semaphore(self.config.max_concurrent_evals)
@@ -104,16 +103,9 @@ class ChessEnv(BaseEnv):
                 validation_state_dict = json.load(f)
             self.test.load_state_dict(validation_state_dict)
 
-        train_info = (
-            f"[bold cyan]Total:[/bold cyan] {len(self.train):,}\n"
-            f"[bold cyan]Avg Elo:[/bold cyan] {self.train.avg_dataset_elo:.2f}"
-        )
-        test_info = (
-            f"[bold magenta]Total:[/bold magenta] {len(self.test):,}\n"
-            f"[bold magenta]Avg Elo:[/bold magenta] {self.test.avg_dataset_elo:.2f}"
-        )
+        train_info = f"[bold cyan]Total:[/bold cyan] {len(self.train):,}\n"
+        test_info = f"[bold magenta]Total:[/bold magenta] {len(self.test):,}\n"
 
-        # Wrap them in nested panels for a "Dashboard" look
         summary_panel = Panel(
             Columns(
                 [
@@ -253,7 +245,7 @@ class ChessEnv(BaseEnv):
                 n=self.config.group_size,
                 max_tokens=self.config.max_token_length,
                 temperature=1.0,
-                stop=[self.tokenizer.eos_token_id]
+                stop=[self.tokenizer.eos_token_id],
             )
 
             state = managed.get_state()
@@ -286,127 +278,7 @@ class ChessEnv(BaseEnv):
         scored_data = await self.score(to_score)
         to_backlog = []
 
-        return scored_data, to_backlog
-
-    def _extract_prediction(self, rollout_item, model_response: str):
-        """
-        Extract the chess move from the <answer> tags, ensuring <think> is present.
-        """
-        # Require <think> block
-        think_match = re.search(
-            r"<think>(.*?)</think>", model_response, re.DOTALL | re.IGNORECASE
-        )
-        # Require <answer> block
-        answer_match = re.search(
-            r"<answer>(.*?)</answer>", model_response, re.DOTALL | re.IGNORECASE
-        )
-
-        if not think_match or not answer_match:
-            return "INVALID_ANSWER_FORMAT"
-
-        # reasoning_str = think_match.group(1).strip()
-        model_move_str = answer_match.group(1).strip()
-
-        # check if model move is legal
-        board = chess.Board(rollout_item["fen"])
-        try:
-            # Try SAN first (e.g., "Nf3")
-            move = board.parse_san(model_move_str)
-        except ValueError:
-            try:
-                # If SAN fails, try UCI (e.g., "g1f3")
-                move = board.parse_uci(model_move_str)
-            except ValueError:
-                # If both fail, the format is invalid
-                return "INVALID_MOVE_FORMAT"
-
-        if move not in board.legal_moves:
-            return "ILLEGAL_MOVE"
-
-        # Return just the cleaned inner text from the answer block
-        return model_move_str
-
-    async def _get_move_eval(
-        self, engine: chess.engine.UciProtocol, fen: str, move_str: str
-    ) -> float:
-        """
-        Evaluate a move in centipawns using Stockfish.
-        Returns positive score if the move is good for the player to move, negative if bad.
-        1000 centipawns is equivalent to 1 pawn.
-        A score of +100 means the move is evaluated as giving a 1 pawn advantage to the player to move.
-        Returns 10000 for a checkmate in favor of the player to move, -10000 for a checkmate against.
-        """
-        board = chess.Board(fen)
-        # Try to parse SAN (e.g. Nf3) or UCI (e.g. g1f3)
-        try:
-            move = board.parse_san(move_str)
-        except ValueError:
-            move = board.parse_uci(move_str)
-
-        board.push(move)
-        # Eval time strictly limited to prevent hanging
-        info = await engine.analyse(
-            board,
-            chess.engine.Limit(
-                depth=self.config.stockfish_depth, time=self.config.engine_time_limit
-            ),
-        )
-
-        # Get score from the perspective of the player who just moved
-        score = info["score"].pov(not board.turn).score(mate_score=10000)
-        return float(score)
-
-    @classmethod
-    async def shutdown(cls):
-        if not hasattr(cls, "engine_pool") or not cls.engine_pool:
-            return
-
-        rprint("[bold red]Shutting down Stockfish engine pool...[/bold red]")
-
-        tasks = []
-        for engine in cls.engine_pool:
-            if engine:
-                # We wrap the quit call in a protected task
-                tasks.append(engine.quit())
-
-        if tasks:
-            # return_exceptions=True prevents the "Different Loop" error
-            # from bubbling up as a traceback. It just returns the error as a value.
-            results = await asyncio.gather(*tasks, return_exceptions=True)
-
-            # Log only actual errors, ignoring "Loop Closed" noise
-            for res in results:
-                if isinstance(res, Exception) and "loop" not in str(res).lower():
-                    rprint(f"[red]Minor engine cleanup note: {res}[/red]")
-
-        cls.engine_pool = []
-        rprint("[green]All engines shut down successfully.[/green]")
-
-    async def throttled_move_eval(self, fen: str, move_str: str) -> float:
-        async with (
-            self.eval_semaphore
-        ):  # This line waits if self.config.max_concurrent_evals tasks are already running
-            engine = await self.engine_pool.get()
-            try:
-                return await self._get_move_eval(engine, fen, move_str)
-            finally:
-                self.engine_pool.put_nowait(engine)
-
-    def get_eval_reward(self, eval_best, eval_chosen):
-        """Calculate a reward based on the difference in evaluation between the best move and the chosen move."""
-        # Calculate the loss in centipawns.
-        # We use max(0, ...) because the model shouldn't be penalized
-        # if it finds a move even better than the 'best_move' reference.
-        eval_diff = max(0.0, eval_best - eval_chosen)
-
-        # Using a Sigmoid-like scaling function:
-        # A 'scaling_factor' of 200.0 means a 200cp (2 pawn) blunder
-        # results in a score of ~0.5.
-        # A 0cp diff always results in 1.0.
-        scaling_factor = self.config.reward_scaling_factor
-        final_score = 1.0 / (1.0 + (eval_diff / scaling_factor))
-
-        return final_score
+        return [scored_data], to_backlog
 
     async def score(
         self, rollout_group_data
@@ -517,9 +389,107 @@ class ChessEnv(BaseEnv):
         if not scores["scores"] or all(
             scores["scores"][0] == score for score in scores["scores"]
         ):
+            if all(scores["scores"][0] == score for score in scores["scores"]):
+                print(f"all scores are the same: {scores['scores'][0]}")
+            if not scores["scores"]:
+                print("scores aren't right")
             return None
 
         return scores
+
+    def _extract_prediction(self, rollout_item, model_response: str):
+        """
+        Extract the chess move from the <answer> tags, ensuring <think> is present.
+        """
+        # Require <think> block
+        think_match = re.search(
+            r"<think>(.*?)</think>", model_response, re.DOTALL | re.IGNORECASE
+        )
+        # Require <answer> block
+        answer_match = re.search(
+            r"<answer>(.*?)</answer>", model_response, re.DOTALL | re.IGNORECASE
+        )
+
+        if not think_match or not answer_match:
+            return "INVALID_ANSWER_FORMAT"
+
+        # reasoning_str = think_match.group(1).strip()
+        model_move_str = answer_match.group(1).strip()
+
+        # check if model move is legal
+        board = chess.Board(rollout_item["fen"])
+        try:
+            # Try SAN first (e.g., "Nf3")
+            move = board.parse_san(model_move_str)
+        except ValueError:
+            try:
+                # If SAN fails, try UCI (e.g., "g1f3")
+                move = board.parse_uci(model_move_str)
+            except ValueError:
+                # If both fail, the format is invalid
+                return "INVALID_MOVE_FORMAT"
+
+        if move not in board.legal_moves:
+            return "ILLEGAL_MOVE"
+
+        # Return just the cleaned inner text from the answer block
+        return model_move_str
+
+    async def _get_move_eval(
+        self, engine: chess.engine.UciProtocol, fen: str, move_str: str
+    ) -> float:
+        """
+        Evaluate a move in centipawns using Stockfish.
+        Returns positive score if the move is good for the player to move, negative if bad.
+        1000 centipawns is equivalent to 1 pawn.
+        A score of +100 means the move is evaluated as giving a 1 pawn advantage to the player to move.
+        Returns 10000 for a checkmate in favor of the player to move, -10000 for a checkmate against.
+        """
+        board = chess.Board(fen)
+        # Try to parse SAN (e.g. Nf3) or UCI (e.g. g1f3)
+        try:
+            move = board.parse_san(move_str)
+        except ValueError:
+            move = board.parse_uci(move_str)
+
+        board.push(move)
+        # Eval time strictly limited to prevent hanging
+        info = await engine.analyse(
+            board,
+            chess.engine.Limit(
+                depth=self.config.stockfish_depth, time=self.config.engine_time_limit
+            ),
+        )
+
+        # Get score from the perspective of the player who just moved
+        score = info["score"].pov(not board.turn).score(mate_score=10000)
+        return float(score)
+
+    async def throttled_move_eval(self, fen: str, move_str: str) -> float:
+        async with (
+            self.eval_semaphore
+        ):  # This line waits if self.config.max_concurrent_evals tasks are already running
+            engine = await self.engine_pool.get()
+            try:
+                return await self._get_move_eval(engine, fen, move_str)
+            finally:
+                self.engine_pool.put_nowait(engine)
+
+    def get_eval_reward(self, eval_best, eval_chosen):
+        """Calculate a reward based on the difference in evaluation between the best move and the chosen move."""
+        # Calculate the loss in centipawns.
+        # We use max(0, ...) because the model shouldn't be penalized
+        # if it finds a move even better than the 'best_move' reference.
+        eval_diff = max(0.0, eval_best - eval_chosen)
+
+        # Using a Sigmoid-like scaling function:
+        # A 'scaling_factor' of 200.0 means a 200cp (2 pawn) blunder
+        # results in a score of ~0.5.
+        # A 0cp diff always results in 1.0.
+        scaling_factor = self.config.reward_scaling_factor
+        final_score = 1.0 / (1.0 + (eval_diff / scaling_factor))
+
+        return final_score
 
     async def rollout_and_score_eval(
         self, test_item: ChessPuzzleItem
@@ -533,20 +503,15 @@ class ChessEnv(BaseEnv):
         for role_dict in test_item.prompt:
             messages.append(dict(role_dict))
 
-        prompt = self.tokenizer.apply_chat_template(
-            messages, add_generation_prompt=True, tokenize=False
+        completion = await self.server.chat_completion(
+            messages=messages,
+            n=1,
+            max_tokens=self.config.max_token_length,
+            temperature=self.config.eval_rollout_temperature,
+            split="eval",
         )
 
-        async with self.server.managed_server(tokenizer=self.tokenizer) as managed:
-            completion = await managed.completion(
-                prompt=prompt,
-                n=1,
-                max_tokens=self.config.max_token_length,
-                temperature=0.0,
-                stop=[self.tokenizer.eos_token_id]
-            )
-
-        model_response = completion.choices[0].text
+        model_response = completion.choices[0].message.content
         prediction = self._extract_prediction(test_item, model_response)
 
         length_penalty = 0
@@ -613,7 +578,12 @@ class ChessEnv(BaseEnv):
         }
 
     async def evaluate(self, *args, **kwargs):
-        eval_tasks = [self.rollout_and_score_eval(test_item) for test_item in self.test]
+        test_items = []
+        for i in range(1):
+            test_items.append(self.test[i])
+        eval_tasks = [
+            self.rollout_and_score_eval(test_item) for test_item in test_items
+        ]
         all_scores = await tqdm_asyncio.gather(
             *eval_tasks, desc="Scoring model responses"
         )
@@ -724,42 +694,39 @@ class ChessEnv(BaseEnv):
         await super().wandb_log(wandb_metrics)
 
 
-def main():
-    try:
-        # Assuming .cli() internally runs an event loop (e.g., via uvicorn or asyncio.run)
-        ChessEnv.cli()
-    except KeyboardInterrupt:
-        rprint("[yellow]\n[!] Interrupted by user. Shutting down...[/yellow]")
-    except Exception as e:
-        rprint(f"[bold red]\n[!] Critical error: {e}[/bold red]")
-        # Don't raise here if you want 'finally' to handle a clean exit
-    finally:
-        rprint(
-            "[bold yellow]\n[System] Entry point finished. Initiating final cleanup...[/bold yellow]"
-        )
+class ColorFormatter(logging.Formatter):
+    # High Intensity / Bold ANSI Color Codes for Black Backgrounds
+    cyan = "\x1b[36;1m"  # DEBUG: Bright Cyan (much better than dark blue)
+    white = "\x1b[37;20m"  # INFO: Clean White (grey is often too dim)
+    yellow = "\x1b[33;1m"  # WARNING: Bold Yellow
+    red = "\x1b[31;1m"  # ERROR: Bold Red
+    magenta = "\x1b[35;1m"  # CRITICAL: Bright Magenta (stands out more than red)
+    reset = "\x1b[0m"
 
-        try:
-            # Get the current running loop or create a new one
-            try:
-                loop = asyncio.get_running_loop()
-            except RuntimeError:
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
+    format_str = "%(name)s - %(levelname)s - %(message)s"
 
-            if loop.is_running():
-                # If the loop is already running, we schedule the task
-                loop.create_task(ChessEnv.shutdown())
-            else:
-                # If the loop exists but isn't running, run the shutdown to completion
-                loop.run_until_complete(ChessEnv.shutdown())
+    FORMATS = {
+        logging.DEBUG: cyan + format_str + reset,
+        logging.INFO: white + format_str + reset,
+        logging.WARNING: yellow + format_str + reset,
+        logging.ERROR: red + format_str + reset,
+        logging.CRITICAL: magenta + format_str + reset,
+    }
 
-            rprint("[bold green]Cleanup finished.[/bold green]")
-        except Exception as cleanup_err:
-            rprint(f"[red]Cleanup failed: {cleanup_err}[/red]")
-        finally:
-            # Final safety kill for any orphaned Stockfish processes
-            sys.exit(0)
+    def format(self, record):
+        log_fmt = self.FORMATS.get(record.levelno)
+        formatter = logging.Formatter(log_fmt)
+        return formatter.format(record)
 
 
 if __name__ == "__main__":
-    main()
+
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setLevel(logging.DEBUG)
+    formatter = logging.Formatter("%(name)s - %(levelname)s - %(message)s")
+    console_handler.setFormatter(ColorFormatter())
+    if not logger.handlers:
+        logger.addHandler(console_handler)
+    logger.propagate = False
+
+    ChessEnv.cli()

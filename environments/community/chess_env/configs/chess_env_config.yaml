@@ -2,11 +2,11 @@
 env:
   # --- Core Rollout Settings ---
   group_size: 8
-  max_num_workers: 128
+  max_num_workers: 4
   max_eval_workers: 16
   max_num_workers_per_node: 8
   steps_per_eval: 100
-  max_token_length: 4096
+  max_token_length: 2048 #max tokens for generation in trainer
   eval_handling: "STOP_TRAIN"
   eval_limit_ratio: 0.1
   inference_weight: 1.0
@@ -34,7 +34,7 @@ env:
   #Set the STOCKFISH_PATH env variable
   stockfish_depth: 18
   engine_time_limit: 0.1
-  max_concurrent_evals: 16
+  max_concurrent_evals: 4
   reward_scaling_factor: 250.0
 
   # --- Rewards & Penalties ---
@@ -63,13 +63,13 @@ env:
     dataset_name: "codingmonster1234/chess-puzzles-rlvr"
     split: "validation"
     use_curriculum: false
-    dataset_percent_to_use: 0.002
+    dataset_percent_to_use: 0.0002
     use_infinite_looping: false
 
   # --- Checkpoints & Data Paths ---
   train_dataset_checkpoint_path: null
   validation_dataset_checkpoint_path: null
-  data_path_to_save_groups: "chess_env_rollout_groups.jsonl"
+  data_path_to_save_groups: "chess_env/rollouts/chess_env_rollout_groups.jsonl"
   data_dir_to_save_evals: "chess_env_eval_results"
 
 # === vLLM / OpenAI Server Configurations ===
@@ -96,7 +96,7 @@ testing: false
 tinker:
   lora_rank: 32
   learning_rate: 0.00004
-  max_token_trainer_length: 4096
+  max_token_trainer_length: 3072 #max token length = prompt + generation tokens here
   checkpoint_dir: "./tinker_model_checkpoints/"
   tinker_pretrained_weights: "tinker://fe1c5bb0-bf01-52e5-b5b3-03c9acd17c9b:train:0/weights/final"
   save_checkpoint_interval: 20
