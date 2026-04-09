@@ -77,7 +77,7 @@ openai:
   - model_name: "codingmonster1234/chess-sft-modelv2"
     tokenizer_name: "codingmonster1234/chess-sft-modelv2"
     server_type: "vllm"
-    base_url: "http://localhost:8001/v1"
+    base_url: "http://localhost:9001/v1"
     api_key: "x"
     timeout: 1200
     num_max_requests_at_once: 512

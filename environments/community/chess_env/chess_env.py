@@ -245,7 +245,7 @@ class ChessEnv(BaseEnv):
                 n=self.config.group_size,
                 max_tokens=self.config.max_token_length,
                 temperature=1.0,
-                stop=[self.tokenizer.eos_token_id],
+                stop_token_ids=[self.tokenizer.eos_token_id],
             )
 
             state = managed.get_state()
@@ -695,26 +695,38 @@ class ChessEnv(BaseEnv):
 
 
 class ColorFormatter(logging.Formatter):
-    # High Intensity / Bold ANSI Color Codes for Black Backgrounds
-    cyan = "\x1b[36;1m"  # DEBUG: Bright Cyan (much better than dark blue)
-    white = "\x1b[37;20m"  # INFO: Clean White (grey is often too dim)
-    yellow = "\x1b[33;1m"  # WARNING: Bold Yellow
-    red = "\x1b[31;1m"  # ERROR: Bold Red
-    magenta = "\x1b[35;1m"  # CRITICAL: Bright Magenta (stands out more than red)
+    # High Intensity / Bold ANSI Color Codes
+    cyan = "\x1b[36;1m"
+    white = "\x1b[37;1m"
+    yellow = "\x1b[33;1m"
+    red = "\x1b[31;1m"
+    magenta = "\x1b[35;1m"
     reset = "\x1b[0m"
 
-    format_str = "%(name)s - %(levelname)s - %(message)s"
+    # Split the format: color the prefix, reset before the message
+    # Output: name - LEVELNAME - message
+    prefix_fmt = "%(name)s - %(levelname)s"
+    suffix_fmt = " - %(message)s"
 
-    FORMATS = {
-        logging.DEBUG: cyan + format_str + reset,
-        logging.INFO: white + format_str + reset,
-        logging.WARNING: yellow + format_str + reset,
-        logging.ERROR: red + format_str + reset,
-        logging.CRITICAL: magenta + format_str + reset,
-    }
+    def __init__(self):
+        super().__init__()
+        self.FORMATS = {
+            logging.DEBUG: self.cyan + self.prefix_fmt + self.reset + self.suffix_fmt,
+            logging.INFO: self.white + self.prefix_fmt + self.reset + self.suffix_fmt,
+            logging.WARNING: self.yellow
+            + self.prefix_fmt
+            + self.reset
+            + self.suffix_fmt,
+            logging.ERROR: self.red + self.prefix_fmt + self.reset + self.suffix_fmt,
+            logging.CRITICAL: self.magenta
+            + self.prefix_fmt
+            + self.reset
+            + self.suffix_fmt,
+        }
 
     def format(self, record):
         log_fmt = self.FORMATS.get(record.levelno)
+        # We use a temporary formatter to handle the actual string interpolation
         formatter = logging.Formatter(log_fmt)
         return formatter.format(record)
 
