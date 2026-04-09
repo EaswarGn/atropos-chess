@@ -710,6 +710,7 @@ def train_lora_restart(config: TrainingConfig):
     # === Training Loop ===
     batches = []
     for step in range(config.training_steps):
+        torch.cuda.reset_peak_memory_stats()
         print(f"\nStep {step+1}/{config.training_steps}")
         log_gpu_memory("Start of step")
 
