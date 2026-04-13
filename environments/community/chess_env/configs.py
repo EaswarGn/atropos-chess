@@ -1,7 +1,7 @@
 import os
+from typing import Optional
 
 from pydantic import BaseModel, Field
-from typing import Optional
 
 from atroposlib.envs.base import BaseEnvConfig
 

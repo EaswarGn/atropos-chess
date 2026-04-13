@@ -24,6 +24,7 @@ class CurriculumManager:
         self.dataset = load_dataset(self.cfg.dataset_name, split=self.cfg.split)
 
         self.len = 0  # length of the dataset (after applying percentage filter)
+        self.buckets: Dict[str, List[int]] = {}
 
         if self.cfg.split == "validation" or self.cfg.split == "test":
             full_range = list(range(len(self.dataset)))
@@ -33,7 +34,6 @@ class CurriculumManager:
 
         if self.cfg.split == "train":
             if self.cfg.use_curriculum is True:
-                self.buckets: Dict[str, List[int]] = {}
                 self.create_buckets()
 
                 self.curr_bucket_key = self.cfg.start_bucket

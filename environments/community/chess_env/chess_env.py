@@ -173,7 +173,9 @@ class ChessEnv(BaseEnv):
         # save only the dataset to checkpoint, model saving is handled by trainer
         with open(ckpt_path, "w") as f:
             json.dump([self.train.state_dict(), self.test.state_dict()], f)
-        rprint("[green]Training and validation dataset dicts saved.[/green]")
+        rprint(
+            f"[green]Training and validation dataset dicts saved to: {ckpt_path}[/green]"
+        )
 
     def load_checkpoint(self):
         super().load_checkpoint()
