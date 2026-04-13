@@ -605,18 +605,6 @@ def _hotswap_lora_adapter(
         return False
 
 
-def log_gpu_memory(label: str):
-    """Helper to log allocated and reserved memory with a label."""
-    if torch.cuda.is_available():
-        allocated = torch.cuda.memory_allocated() / 1e9
-        reserved = torch.cuda.memory_reserved() / 1e9
-        # Max memory allocated since last reset helps catch 'spikes'
-        max_allocated = torch.cuda.max_memory_allocated() / 1e9
-        print(
-            f"  [MEM] {label:<25} | Alloc: {allocated:.2f}GB | Reserve: {reserved:.2f}GB | Max: {max_allocated:.2f}GB"
-        )
-
-
 def train_lora_restart(config: TrainingConfig):
     """
     GRPO training with LoRA adapters using vLLM restarts (FAST mode).
@@ -663,7 +651,6 @@ def train_lora_restart(config: TrainingConfig):
     # Load model with LoRA adapters for training
     print("[1/4] Loading model with LoRA adapters...")
     model, tokenizer = load_model_and_tokenizer(config)
-    log_gpu_memory("After model load")
 
     # Only optimize LoRA parameters
     trainable_params = [p for p in model.parameters() if p.requires_grad]
@@ -681,7 +668,6 @@ def train_lora_restart(config: TrainingConfig):
     vllm_proc = _launch_vllm_with_lora(config, current_adapter_path)
     if vllm_proc is None:
         raise RuntimeError("Failed to launch vLLM")
-    log_gpu_memory("After vLLM launch (KV Cache Reserved)")
 
     print(f"[4/4] Starting training for {config.training_steps} steps")
     print("-" * 60)
@@ -691,12 +677,6 @@ def train_lora_restart(config: TrainingConfig):
         _terminate_vllm(vllm_proc, config.vllm_port)
         raise RuntimeError(f"Atropos API not reachable at {config.atropos_url}")
     register_trainer(config)
-
-    print("Warming up optimizer state...")
-    optimizer.zero_grad()
-    optimizer.step()
-    torch.cuda.empty_cache()
-    log_gpu_memory("After optimizer state is warmed up")
 
     # === Benchmark tracking ===
     benchmark_stats = {
@@ -710,25 +690,17 @@ def train_lora_restart(config: TrainingConfig):
     # === Training Loop ===
     batches = []
     for step in range(config.training_steps):
-        torch.cuda.reset_peak_memory_stats()
         print(f"\nStep {step+1}/{config.training_steps}")
-        log_gpu_memory("Start of step")
 
         # Fetch data (with inference logprobs for proper GRPO)
         data_fetch_start = time.time()
         if len(batches) == 0:
-            log_gpu_memory("Pre-fetch (cache empty)")
-
-            torch.cuda.empty_cache()
             batches, _ = get_data(
                 config.batch_size,
                 config.seq_len,
                 config.atropos_url,
                 extract_inference_logprobs=True,
             )
-
-            log_gpu_memory("Post-fetch (tensors in RAM/GPU)")
-
         batch_data = batches.pop(0)
         token_batches, label_batches, advantage_batches, temperature_batches = (
             batch_data[:4]
@@ -739,9 +711,6 @@ def train_lora_restart(config: TrainingConfig):
 
         # Training step with proper GRPO
         step_start = time.time()
-
-        torch.cuda.reset_peak_memory_stats()
-
         metrics = run_training_step(
             model,
             optimizer,
@@ -753,9 +722,6 @@ def train_lora_restart(config: TrainingConfig):
             step_idx=step,
             inference_logprob_batches=inference_logprob_batches,
         )
-
-        log_gpu_memory("Post-training-step")
-
         step_time = time.time() - step_start
         benchmark_stats["step_times"].append(step_time)
 
