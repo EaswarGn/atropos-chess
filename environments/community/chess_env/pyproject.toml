@@ -13,8 +13,7 @@ dependencies = [
     "torch>=2.11.0",
 ]
 
-[tool.uv.sources]
-atroposlib = { path = "../../../", editable = true }
-
-[tool.setuptools]
-package-dir = {"" = "environments/community/chess_env"}
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+]
