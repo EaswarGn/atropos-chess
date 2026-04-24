@@ -49,26 +49,33 @@ env:
   train_dataset_config:
     dataset_name: "codingmonster1234/chess-puzzles-rlvr"
     split: "train"
-    use_curriculum: true
-    bucket_size: 100
-    min_rating: 400
-    max_rating: 3300
-    start_bucket: "bucket:400-500"
-    curr_bucket_lookup_prob: 0.85
-    dataset_percent_to_use: 0.001
-    use_infinite_looping: true
+    max_items: 5000
+    curriculum_type: "rating"
+    schedule_config:
+      schedule_type: "fixed_linear"
+      min_rating: 400
+      max_rating: 3300
+      start_rating: 500
+      total_curriculum_step: 300
+      difficulty_step: 50
+      root_degree: 2
+      enable_infinite_loop: true
+    n_bins: 5
+    temperature: 1.0
+    ema_alpha: 0.3
+    performance_strategy: "competence_based"
+    rebin_interval: 100
 
   # --- Validation Dataset Configuration ---
   validation_dataset_config:
     dataset_name: "codingmonster1234/chess-puzzles-rlvr"
     split: "validation"
-    use_curriculum: false
-    dataset_percent_to_use: 0.0002
-    use_infinite_looping: false
+    min_rating: 400
+    max_rating: 3300
+    max_items: 1000
 
   # --- Checkpoints & Data Paths ---
   train_dataset_checkpoint_path: null
-  validation_dataset_checkpoint_path: null
   data_path_to_save_groups: "chess_env/rollouts/chess_env_rollout_groups.jsonl"
   data_dir_to_save_evals: "chess_env/chess_env_eval_results"
 
