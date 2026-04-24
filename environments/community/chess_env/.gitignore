@@ -1,5 +1,4 @@
 stockfish
 base_model
-t.py
-s.py
 rollouts
+commit_msg.txt
