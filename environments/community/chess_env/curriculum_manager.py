@@ -161,7 +161,7 @@ class StatefulCurriculumManager:
         max_rating = self.config.schedule_config.max_rating
         hf_dataset = hf_dataset.filter(
             lambda x: min_rating <= x["rating"] <= max_rating,
-            desc=f"Filtering by rating ({min_rating}-{max_rating})",
+            desc=f"Filtering by training dataset by rating ({min_rating}-{max_rating})",
         )
         if self.config.max_items is not None:
             if self.config.max_items < 1:

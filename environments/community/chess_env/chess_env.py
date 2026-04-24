@@ -176,10 +176,12 @@ class ChessEnv(BaseEnv):
             path=self.config.validation_dataset_config.dataset_name,
             split=self.config.validation_dataset_config.split,
         )
+
+        min_rating = self.config.validation_dataset_config.min_rating
+        max_rating = self.config.validation_dataset_config.max_rating
         test_set = test_set.filter(
-            lambda x: self.config.validation_dataset_config.min_rating
-            <= x["rating"]
-            <= self.config.validation_dataset_config.max_rating
+            lambda x: min_rating <= x["rating"] <= max_rating,
+            desc=f"Filtering validation dataset by rating ({min_rating}-{max_rating})",
         )
 
         total_count = len(test_set)
