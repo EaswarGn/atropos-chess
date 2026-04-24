@@ -157,11 +157,11 @@ class StatefulCurriculumManager:
         hf_dataset = load_dataset(self.config.dataset_name, split=self.config.split)
 
         # filter by rating and take specified number of samples
-
+        min_rating = self.config.schedule_config.min_rating
+        max_rating = self.config.schedule_config.max_rating
         hf_dataset = hf_dataset.filter(
-            lambda x: self.config.schedule_config.min_rating
-            <= x["rating"]
-            <= self.config.schedule_config.max_rating
+            lambda x: min_rating <= x["rating"] <= max_rating,
+            desc=f"Filtering by rating ({min_rating}-{max_rating})",
         )
         if self.config.max_items is not None:
             if self.config.max_items < 1:
