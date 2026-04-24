@@ -7,13 +7,13 @@ requires-python = ">=3.13"
 dependencies = [
     "atroposlib[dev]>=0.4.0",
     "chess>=1.11.2",
-    "gradio>=6.11.0",
-    "tinker>=0.16.1",
-    "tinker-cookbook>=0.2.2",
-    "torch>=2.11.0",
 ]
 
 [dependency-groups]
 dev = [
     "pytest>=9.0.2",
+]
+tinker = [
+    "tinker>=0.16.1",
+    "tinker-cookbook>=0.2.2",
 ]
