@@ -33,6 +33,16 @@ from .curriculum_manager import StatefulCurriculumManager, format_item
 
 
 class ChessEnv(BaseEnv):
+    """Chess environment for reinforcement learning with chess puzzles.
+
+    This environment manages chess puzzle training and evaluation using a curriculum
+    manager, integrates with chess engines for move evaluation, and handles scoring
+    of model-generated responses based on chess move quality.
+
+    Attributes:
+        config (ChessEnvConfig): Configuration for the chess environment.
+        tokenizer (Union[PreTrainedTokenizer, PreTrainedTokenizerFast]): Tokenizer for processing text.
+    """
 
     config: ChessEnvConfig
     tokenizer: Union[PreTrainedTokenizer, PreTrainedTokenizerFast]
@@ -44,9 +54,15 @@ class ChessEnv(BaseEnv):
         testing=False,
         slurm=False,
     ):
+        """Initialize the ChessEnv.
+
+        Args:
+            config (ChessEnvConfig): Configuration object for the environment.
+            server_configs (List[APIServerConfig]): List of API server configurations.
+            testing (bool, optional): Whether this is a testing instance. Defaults to False.
+            slurm (bool, optional): Whether running on SLURM. Defaults to False.
         """
-        Initialize the Chess reasoning and playing environment.
-        """
+
         super().__init__(config, server_configs, slurm, testing)
         self.eval_metrics = list()
         self.engine = None
@@ -58,6 +74,12 @@ class ChessEnv(BaseEnv):
 
     @classmethod
     def config_init(self) -> Tuple[ChessEnvConfig, List[APIServerConfig]]:
+        """Initialize and return default configuration for ChessEnv.
+
+        Returns:
+            Tuple[ChessEnvConfig, List[APIServerConfig]]: A tuple containing the environment
+                configuration and list of server configurations.
+        """
         env_config = ChessEnvConfig(
             tokenizer_name="codingmonster1234/chess-sft-modelv2",
             group_size=8,
@@ -87,10 +109,11 @@ class ChessEnv(BaseEnv):
         return env_config, server_configs
 
     async def setup(self):
-        """
-        Set up the environment by loading the dataset and starting Stockfish.
-        """
+        """Set up the environment by loading the dataset and starting Stockfish.
 
+        Loads the training and validation datasets, initializes the curriculum manager,
+        and starts a pool of Stockfish engines for move evaluation.
+        """
         rprint("[yellow]Loading Dataset...[/yellow]")
 
         self.train = StatefulCurriculumManager(
@@ -144,10 +167,11 @@ class ChessEnv(BaseEnv):
             )
 
     def create_validation_dataset(self) -> Dataset:
-        """
-        Create a validation dataset by filtering the test set based on the validation dataset config.
-        """
+        """Create a validation dataset by filtering the test set based on the validation dataset config.
 
+        Returns:
+            Dataset: The filtered and sampled validation dataset.
+        """
         test_set = load_dataset(
             path=self.config.validation_dataset_config.dataset_name,
             split=self.config.validation_dataset_config.split,
@@ -173,14 +197,21 @@ class ChessEnv(BaseEnv):
         return test_set
 
     def save_checkpoint(self, step: int, data=None):
+        """Save a checkpoint of the environment state.
+
+        Args:
+            step (int): The current training step.
+            data (Optional[Dict], optional): Additional data to save. Defaults to None.
+        """
         if data is None:
             data = {}
         data["train_state_dict"] = self.train.state_dict()
         super().save_checkpoint(step, data=data)
 
     def load_checkpoint(self):
-        """
-        Checkpoint loading
+        """Load a checkpoint of the environment state.
+
+        Loads the super class checkpoint and restores the training state.
         """
         super().load_checkpoint()
 
@@ -188,8 +219,13 @@ class ChessEnv(BaseEnv):
         self.train.load_state_dict(self.train_state_dict)
 
     async def get_next_item(self) -> ChessPuzzleItem:
-        """
-        Get the next training item from the dataset.
+        """Get the next training item from the dataset.
+
+        Returns:
+            ChessPuzzleItem: The next puzzle item for training.
+
+        Raises:
+            StopIteration: If the curriculum has reached maximum steps and infinite loop is disabled.
         """
         if self.train.step == self.train._resolve_total_steps():
             logger.info(
@@ -213,10 +249,15 @@ class ChessEnv(BaseEnv):
     async def collect_trajectories(
         self, item: ChessPuzzleItem
     ) -> Tuple[ScoredDataGroup, List]:
-        """
-        Generate and collect model responses for scoring.
-        """
+        """Generate and collect model responses for scoring.
 
+        Args:
+            item (ChessPuzzleItem): The puzzle item to generate responses for.
+
+        Returns:
+            Tuple[ScoredDataGroup, List]: A tuple containing the scored data group and a list
+                of items to backlog (currently empty).
+        """
         prompt = self.tokenizer.apply_chat_template(
             item.prompt, add_generation_prompt=True, tokenize=False
         )
@@ -261,9 +302,17 @@ class ChessEnv(BaseEnv):
     async def score(
         self, rollout_group_data: List[RolloutItem]
     ) -> Union[Optional[ScoredDataGroup], List[Optional[ScoredDataGroup]]]:
-        """
-        Score the generated model responses. 0 for format failure.
-        Calculates proportional reward based on Stockfish eval difference.
+        """Score the generated model responses based on chess move quality.
+
+        Assigns rewards based on format correctness, move legality, and evaluation difference
+        compared to the best move. Returns None if scoring fails.
+
+        Args:
+            rollout_group_data (List[RolloutItem]): List of rollout items to score.
+
+        Returns:
+            Union[Optional[ScoredDataGroup], List[Optional[ScoredDataGroup]]]: The scored data group
+                or None if scoring conditions are not met.
         """
         scores = ScoredDataGroup()
         scores["tokens"] = list()
@@ -319,7 +368,7 @@ class ChessEnv(BaseEnv):
 
             else:
 
-                final_score = self.get_eval_reward(eval_best, eval_chosen)
+                final_score = self.get_stockfish_reward(eval_best, eval_chosen)
 
             response_tokens = len(
                 self.tokenizer.encode(item.model_completion["content"])
@@ -359,8 +408,16 @@ class ChessEnv(BaseEnv):
     def _extract_prediction(
         self, rollout_item: RolloutItem
     ) -> Union[str, MoveExtractionError]:
-        """
-        Extract the chess move from the <answer> tags, ensuring <think> is present.
+        """Extract the chess move from the <answer> tags, ensuring <think> is present.
+
+        Parses the model completion for required <think> and <answer> tags, validates
+        the move format and legality.
+
+        Args:
+            rollout_item (RolloutItem): The rollout item containing the model completion.
+
+        Returns:
+            Union[str, MoveExtractionError]: The extracted move string or an error enum.
         """
         # Require <think> block
         think_match = re.search(
@@ -403,12 +460,17 @@ class ChessEnv(BaseEnv):
     async def _get_move_eval(
         self, engine: chess.engine.UciProtocol, fen: str, move_str: str
     ) -> float:
-        """
-        Evaluate a move in centipawns using Stockfish.
-        Returns positive score if the move is good for the player to move, negative if bad.
-        1000 centipawns is equivalent to 1 pawn.
-        A score of +100 means the move is evaluated as giving a 1 pawn advantage to the player to move.
-        Returns 10000 for a checkmate in favor of the player to move, -10000 for a checkmate against.
+        """Evaluate a move in centipawns using Stockfish.
+
+        Args:
+            engine (chess.engine.UciProtocol): The chess engine to use for evaluation.
+            fen (str): The FEN string representing the board position.
+            move_str (str): The move string in SAN or UCI format.
+
+        Returns:
+            float: The evaluation score in centipawns. Positive if good for the player to move,
+                negative if bad. 1000 centipawns = 1 pawn. 10000 for checkmate in favor,
+                -10000 for checkmate against.
         """
         board = chess.Board(fen)
         # Try to parse SAN (e.g. Nf3) or UCI (e.g. g1f3)
@@ -431,6 +493,18 @@ class ChessEnv(BaseEnv):
         return float(score)
 
     async def throttled_move_eval(self, fen: str, move_str: str) -> float:
+        """Evaluate a move with throttling to limit concurrent evaluations.
+
+        Uses a semaphore to control the number of simultaneous evaluations and manages
+        the engine pool.
+
+        Args:
+            fen (str): The FEN string representing the board position.
+            move_str (str): The move string in SAN or UCI format.
+
+        Returns:
+            float: The evaluation score in centipawns.
+        """
         async with (
             self.eval_semaphore
         ):  # This line waits if self.config.max_concurrent_evals tasks are already running
@@ -440,8 +514,16 @@ class ChessEnv(BaseEnv):
             finally:
                 self.engine_pool.put_nowait(engine)
 
-    def get_eval_reward(self, eval_best: float, eval_chosen: float) -> float:
-        """Calculate a reward based on the difference in evaluation between the best move and the chosen move."""
+    def get_stockfish_reward(self, eval_best: float, eval_chosen: float) -> float:
+        """Calculate a reward based on the difference in evaluation between the best move and the chosen move.
+
+        Args:
+            eval_best (float): Evaluation score of the best move in centipawns.
+            eval_chosen (float): Evaluation score of the chosen move in centipawns.
+
+        Returns:
+            float: The calculated reward between 0 and 1, where 1 is perfect.
+        """
         # Calculate the loss in centipawns.
         # We use max(0, ...) because the model shouldn't be penalized
         # if it finds a move even better than the 'best_move' reference.
@@ -459,8 +541,17 @@ class ChessEnv(BaseEnv):
     async def rollout_and_score_eval(
         self, test_item: ChessPuzzleItem
     ) -> Dict[str, Union[int, float, None]]:
-        """Rollout a single test item and score it for evaluation metrics."""
+        """Rollout a single test item and score it for evaluation metrics.
 
+        Generates a model completion, extracts the move, evaluates it, and computes
+        various metrics including format correctness, legality, and evaluation reward.
+
+        Args:
+            test_item (ChessPuzzleItem): The test puzzle item to evaluate.
+
+        Returns:
+            Dict[str, Union[int, float, None]]: A dictionary of evaluation metrics.
+        """
         fen = test_item.fen
         best_move = test_item.best_move
 
@@ -531,7 +622,7 @@ class ChessEnv(BaseEnv):
         eval_best = await self.throttled_move_eval(fen, best_move)
         eval_chosen = await self.throttled_move_eval(fen, prediction)
 
-        eval_reward = self.get_eval_reward(eval_best, eval_chosen)
+        eval_reward = self.get_stockfish_reward(eval_best, eval_chosen)
         eval_diff = max(0.0, eval_best - eval_chosen)
         perfect_move = 1 if eval_chosen >= eval_best else 0
 
@@ -548,6 +639,11 @@ class ChessEnv(BaseEnv):
         }
 
     async def evaluate(self, *args, **kwargs):
+        """Evaluate the model on the test set and compute metrics.
+
+        Runs rollouts on all test items, scores them, and aggregates evaluation metrics
+        such as format accuracy, legal move accuracy, and average evaluation reward.
+        """
         eval_tasks = [
             self.rollout_and_score_eval(format_item(test_item))
             for test_item in self.test
@@ -614,8 +710,10 @@ class ChessEnv(BaseEnv):
         self.print_metrics_summary()
 
     def print_metrics_summary(self):
-        """Prints the eval_metrics list in a structured Rich table."""
+        """Print the evaluation metrics in a structured Rich table.
 
+        Displays all accumulated evaluation metrics in a formatted table with color coding.
+        """
         console = Console()
 
         table = Table(
@@ -652,6 +750,13 @@ class ChessEnv(BaseEnv):
         console.print("\n")
 
     async def wandb_log(self, wandb_metrics: Optional[Dict] = None):
+        """Log metrics to Weights & Biases.
+
+        Aggregates evaluation metrics and training metrics, then logs them to W&B.
+
+        Args:
+            wandb_metrics (Optional[Dict], optional): Additional metrics to log. Defaults to None.
+        """
         if wandb_metrics is None:
             wandb_metrics = {}
 
@@ -665,6 +770,11 @@ class ChessEnv(BaseEnv):
 
 
 class ColorFormatter(logging.Formatter):
+    """Custom logging formatter that adds ANSI color codes to log messages.
+
+    Colors log levels with high-intensity ANSI colors for better console readability.
+    """
+
     # High Intensity / Bold ANSI Color Codes
     cyan = "\x1b[36;1m"
     white = "\x1b[37;1m"
@@ -679,6 +789,7 @@ class ColorFormatter(logging.Formatter):
     suffix_fmt = " - %(message)s"
 
     def __init__(self):
+        """Initialize the ColorFormatter with color-coded format strings for each log level."""
         super().__init__()
         self.FORMATS = {
             logging.DEBUG: self.cyan + self.prefix_fmt + self.reset + self.suffix_fmt,
@@ -695,6 +806,14 @@ class ColorFormatter(logging.Formatter):
         }
 
     def format(self, record):
+        """Format the log record with appropriate color coding.
+
+        Args:
+            record (logging.LogRecord): The log record to format.
+
+        Returns:
+            str: The formatted log message with ANSI color codes.
+        """
         log_fmt = self.FORMATS.get(record.levelno)
         # We use a temporary formatter to handle the actual string interpolation
         formatter = logging.Formatter(log_fmt)
