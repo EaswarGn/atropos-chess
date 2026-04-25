@@ -89,11 +89,11 @@ class ChessEnv(BaseEnv):
             total_steps=100,
             batch_size=8,
             steps_per_eval=20,
-            max_token_length=1024 * 4,
+            max_token_length=1024 * 2,
             inference_weight=1.0,
             wandb_name="chess_reasoning_rl",
             data_path_to_save_groups=None,
-            eval_handling=EvalHandlingEnum.LIMIT_TRAIN,
+            eval_handling=EvalHandlingEnum.STOP_TRAIN,
             eval_limit_ratio=0.1,
         )
         server_configs = [
@@ -652,7 +652,7 @@ class ChessEnv(BaseEnv):
             for test_item in self.test
         ]
         all_scores = await tqdm_asyncio.gather(
-            *eval_tasks, desc="Scoring model responses"
+            *eval_tasks, desc="Evaluating model responses"
         )
 
         format_corrects = [score["format_correct"] for score in all_scores]
