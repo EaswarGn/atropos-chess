@@ -8,28 +8,32 @@ from atroposlib.envs.base import BaseEnvConfig
 
 
 class ValidationDatasetConfig(BaseModel):
-    """
-    Configuration settings for the validation/test dataset.
+    """Configuration settings for the validation/test dataset.
 
     This class defines the parameters for loading and filtering the subset of
     data used to evaluate model performance during or after training.
 
     Attributes:
         dataset_name (str): The Hugging Face hub path or local path to the dataset.
+            Defaults to "codingmonster1234/chess-puzzles-rlvr".
         split (str): The specific dataset split to load (e.g., 'train', 'test').
-        min_rating (int): The lower bound for puzzle difficulty ratings (no lower than 400).
-        max_rating (int): The upper bound for puzzle difficulty ratings (no higher than 3300).
+            Defaults to "train".
+        min_rating (int): The lower bound for puzzle difficulty ratings.
+            Defaults to 400.
+        max_rating (int): The upper bound for puzzle difficulty ratings.
+            Defaults to 3300.
         max_items (int): The total number of items to sample for the validation set.
+            Defaults to 1000.
     """
 
     dataset_name: str = Field(
         default="codingmonster1234/chess-puzzles-rlvr",
-        description="The Hugging Face hub path or local path to the dataset (e.g., 'username/repo').",
+        description="The Hugging Face hub path or local path to the dataset.",
     )
 
     split: str = Field(
         default="train",
-        description="The specific dataset split to load (e.g., 'train', 'test', or 'validation').",
+        description="The specific dataset split to load.",
     )
 
     min_rating: int = Field(
@@ -38,7 +42,8 @@ class ValidationDatasetConfig(BaseModel):
     )
 
     max_rating: int = Field(
-        default=3300, description="The maximum rating for the dataset (max 3300)."
+        default=3300,
+        description="The maximum rating for the dataset (max 3300).",
     )
 
     max_items: int = Field(
@@ -48,13 +53,15 @@ class ValidationDatasetConfig(BaseModel):
 
 
 class CurriculumStrategy(str, Enum):
-    """
-    Enumeration of strategies for sampling items based on performance.
+    """Enumeration of strategies for sampling items based on performance.
 
     Attributes:
-        UNIFORM: Samples all available items with equal probability.
-        EASY_FIRST: Prioritizes items with higher success rates.
-        COMPETENCE_BASED: Adjusts sampling weight based on the model's current mastery.
+        UNIFORM (str): Samples all available items with equal probability.
+            Value is "uniform".
+        EASY_FIRST (str): Prioritizes items with higher success rates.
+            Value is "easy_first".
+        COMPETENCE_BASED (str): Adjusts sampling weight based on the model's current mastery.
+            Value is "competence_based".
     """
 
     UNIFORM = "uniform"
@@ -63,23 +70,32 @@ class CurriculumStrategy(str, Enum):
 
 
 class ScheduleConfig(BaseModel):
-    """
-    Configuration for the macro-curriculum difficulty scheduler.
+    """Configuration for the macro-curriculum difficulty scheduler.
 
     Determines how the difficulty 'window' of the training data expands over
     time based on training steps.
 
     Attributes:
         min_rating (int): The absolute starting difficulty floor.
+            Defaults to 400.
         max_rating (int): The absolute maximum difficulty ceiling.
+            Defaults to 3300.
         start_rating (int): The initial difficulty threshold used at step 0.
+            Defaults to 500.
         schedule_type (str): Shape of growth (e.g., 'fixed_linear', 'root', 'discrete').
+            Defaults to "fixed_linear".
         total_curriculum_step (int): Total steps until the schedule reaches max_rating.
-        difficulty_step (int): The increment size for difficulty increases (e.g., Elo steps).
+            Defaults to 300.
+        difficulty_step (int): The increment size for difficulty increases.
+            Defaults to 50.
         root_degree (int): The degree of the root function for non-linear scaling.
-        difficulty_levels (Optional[List[int]]): Specific tiers for discrete scheduling.
-        max_steps (Optional[List[int]]): Step thresholds for discrete scheduling.
+            Defaults to 2.
+        difficulty_levels (List[int], optional): Specific tiers for discrete scheduling.
+            Defaults to None.
+        max_steps (List[int], optional): Step thresholds for discrete scheduling.
+            Defaults to None.
         enable_infinite_loop (bool): Whether to loop the curriculum after completion.
+            Defaults to False.
     """
 
     min_rating: int = Field(default=400, description="The starting difficulty floor.")
@@ -121,23 +137,32 @@ class ScheduleConfig(BaseModel):
 
 
 class CurriculumConfig(BaseModel):
-    """
-    Comprehensive configuration for the training curriculum.
+    """Comprehensive configuration for the training curriculum.
 
     Combines dataset source information with both macro-scheduling (rating progression)
     and micro-scheduling (performance-based binning).
 
     Attributes:
         dataset_name (str): Path to the training dataset.
+            Defaults to "codingmonster1234/chess-puzzles-rlvr".
         split (str): Dataset split for training.
+            Defaults to "train".
         max_items (int): Maximum items to sample for training.
+            Defaults to 5000.
         curriculum_type (str): Attribute used for difficulty (e.g., 'rating').
+            Defaults to "rating".
         schedule_config (ScheduleConfig): Detailed parameters for the macro-scheduler.
+            Defaults to a default-initialized ScheduleConfig instance.
         n_bins (int): Number of performance bins for micro-curriculum.
+            Defaults to 5.
         temperature (float): Softmax temperature for bin sampling.
+            Defaults to 1.0.
         ema_alpha (float): Smoothing factor for item performance EMA updates.
+            Defaults to 0.3.
         performance_strategy (CurriculumStrategy): Strategy for sampling from bins.
+            Defaults to CurriculumStrategy.COMPETENCE_BASED.
         rebin_interval (int): Frequency of recalculating bin boundaries.
+            Defaults to 100.
     """
 
     dataset_name: str = Field(
@@ -188,27 +213,37 @@ class CurriculumConfig(BaseModel):
 
 
 class ChessEnvConfig(BaseEnvConfig):
-    """
-    High-level configuration for the Chess Reinforcement Learning environment.
-
-    This class manages engine parameters, reward shaping, penalty coefficients,
-    and the overall training/validation data setup.
+    """High-level configuration for the Chess Reinforcement Learning environment.
 
     Attributes:
         stockfish_depth (int): Search depth for engine evaluations.
+            Defaults to 15.
         engine_time_limit (float): Seconds allocated per engine move.
+            Defaults to 0.2.
         reward_scaling_factor (float): Divisor used to scale centipawn losses into rewards.
+            Defaults to 200.0.
         stockfish_path (str): Filepath to the Stockfish executable.
+            Defaults to the STOCKFISH_PATH environment variable or "none".
         max_concurrent_evals (int): Size of the parallel engine instance pool.
+            Defaults to 8.
         invalid_move_notation_reward (float): Penalty/reward for syntactic errors.
+            Defaults to 0.01.
         illegal_move_reward (float): Penalty/reward for illegal chess moves.
+            Defaults to 0.1.
         format_fail_reward (float): Penalty/reward for incorrect response formatting.
+            Defaults to 0.0.
         length_penalty_coefficient (float): Scaling factor for the verbosity penalty.
+            Defaults to 0.5.
         training_rollout_temperature (float): Exploration temperature for training.
+            Defaults to 1.0.
         eval_rollout_temperature (float): Determinism temperature for evaluation.
+            Defaults to 0.0.
         train_dataset_config (CurriculumConfig): Config for training data and curriculum.
+            Defaults to a CurriculumConfig with chess-puzzles-rlvr presets.
         validation_dataset_config (ValidationDatasetConfig): Config for validation data.
-        train_dataset_checkpoint_path (Optional[str]): Path to resume curriculum state.
+            Defaults to a ValidationDatasetConfig with validation split presets.
+        train_dataset_checkpoint_path (str, optional): Path to resume curriculum state.
+            Defaults to None.
     """
 
     stockfish_depth: int = Field(
