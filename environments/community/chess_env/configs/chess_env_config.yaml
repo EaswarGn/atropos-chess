@@ -5,7 +5,7 @@ env:
   max_num_workers: 4
   max_eval_workers: 16
   max_num_workers_per_node: 8
-  steps_per_eval: 100
+  steps_per_eval: 50
   max_token_length: 2048 #max tokens for generation in trainer
   eval_handling: "STOP_TRAIN"
   eval_limit_ratio: 0.1
@@ -15,7 +15,7 @@ env:
   tokenizer_name: "codingmonster1234/chess-sft-modelv2"
   use_wandb: true
   rollout_server_url: "http://localhost:8000"
-  total_steps: 300
+  total_steps: 100
   wandb_name: "chess_puzzle_solving_env"
   num_rollouts_to_keep: 32
   num_rollouts_per_group_for_logging: -1
@@ -56,7 +56,7 @@ env:
       min_rating: 400
       max_rating: 3300
       start_rating: 500
-      total_curriculum_step: 300
+      total_curriculum_step: 100
       difficulty_step: 50
       root_degree: 2
       enable_infinite_loop: true
@@ -64,7 +64,7 @@ env:
     temperature: 1.0
     ema_alpha: 0.3
     performance_strategy: "competence_based"
-    rebin_interval: 100
+    rebin_interval: 10
 
   # --- Validation Dataset Configuration ---
   validation_dataset_config:
