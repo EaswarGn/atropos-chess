@@ -98,6 +98,7 @@ class ChessEnv(BaseEnv):
         )
         server_configs = [
             APIServerConfig(
+                model_name="codingmonster1234/chess-sft-modelv2",
                 tokenizer_name="codingmonster1234/chess-sft-modelv2",
                 base_url="http://localhost:9001/v1",
                 api_key="x",
