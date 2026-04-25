@@ -479,7 +479,7 @@ def _reconstruct_shared_tensors(
             ref_counter_handle = base64.b64decode(ipc_info["ref_counter_handle_b64"])
             ref_counter_offset = ipc_info["ref_counter_offset"]
             event_handle = base64.b64decode(ipc_info["event_handle_b64"])
-            # event_sync_required = ipc_info["event_sync_required"]
+            event_sync_required = ipc_info["event_sync_required"]
 
             share_tuple = (
                 device_index,
@@ -489,7 +489,8 @@ def _reconstruct_shared_tensors(
                 ref_counter_handle,
                 ref_counter_offset,
                 event_handle,
-                False,  # Testing
+                event_sync_required,
+                # False,  # TODO: event_sync_required
             )
 
             storage = torch.UntypedStorage._new_shared_cuda(*share_tuple)
