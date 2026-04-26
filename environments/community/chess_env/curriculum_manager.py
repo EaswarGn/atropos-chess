@@ -1,6 +1,7 @@
 import bisect
 import logging
 import math
+import os
 import random
 from typing import Any, Dict, List, Optional
 
@@ -162,6 +163,7 @@ class StatefulCurriculumManager:
         hf_dataset = hf_dataset.filter(
             lambda x: min_rating <= x["rating"] <= max_rating,
             desc=f"Filtering by training dataset by rating ({min_rating}-{max_rating})",
+            num_proc=os.cpu_count(),
         )
         if self.config.max_items is not None:
             if self.config.max_items < 1:

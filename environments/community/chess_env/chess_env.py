@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 import random
 import re
 import sys
@@ -183,6 +184,7 @@ class ChessEnv(BaseEnv):
         test_set = test_set.filter(
             lambda x: min_rating <= x["rating"] <= max_rating,
             desc=f"Filtering validation dataset by rating ({min_rating}-{max_rating})",
+            num_procs=os.cpu_count(),
         )
 
         total_count = len(test_set)
@@ -652,7 +654,8 @@ class ChessEnv(BaseEnv):
             for test_item in self.test
         ]
         all_scores = await tqdm_asyncio.gather(
-            *eval_tasks, desc="Evaluating model responses"
+            *eval_tasks,
+            desc=f"Evaluating model ({self.server.servers[0].config.model_name}) responses",
         )
 
         format_corrects = [score["format_correct"] for score in all_scores]
@@ -720,7 +723,7 @@ class ChessEnv(BaseEnv):
         console = Console()
 
         table = Table(
-            title="[bold blue]Chess Environment Evaluation Summary[/bold blue]",
+            title=f"[bold blue]Evaluation Summary for {self.server.servers[0].config.model_name}[/bold blue]",
             show_header=True,
             header_style="bold magenta",
             box=box.DOUBLE_EDGE,
