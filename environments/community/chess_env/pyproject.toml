@@ -7,7 +7,6 @@ requires-python = ">=3.13"
 dependencies = [
     "atroposlib[dev]>=0.4.0",
     "chess>=1.11.2",
-    "pydantic-settings>=2.14.0",
 ]
 
 [dependency-groups]
