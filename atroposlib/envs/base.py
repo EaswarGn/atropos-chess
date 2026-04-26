@@ -6,6 +6,7 @@ import math
 import os
 import random
 import string
+import sys
 import time
 import uuid
 import warnings
@@ -20,8 +21,9 @@ import jsonlines
 import numpy as np
 import wandb
 import yaml
-from pydantic import BaseModel, Field
-from pydantic_cli import Cmd, FailedExecutionException, run_and_exit
+from pydantic import BaseModel, Field, ValidationError
+from pydantic_cli import FailedExecutionException
+from pydantic_settings import BaseSettings, CliSubCommand, SettingsConfigDict
 from rich import print as rprint
 from tenacity import retry, stop_after_attempt, wait_random_exponential
 from transformers import AutoTokenizer
@@ -32,9 +34,6 @@ from atroposlib.envs.server_handling.openai_server import resolve_openai_configs
 from atroposlib.frontend.jsonl2html import generate_html
 from atroposlib.type_definitions import UUID
 from atroposlib.utils.cli import (
-    extract_namespace,
-    get_double_dash_flags,
-    get_prefixed_pydantic_model,
     merge_dicts,
 )
 from atroposlib.utils.io import parse_http_response
@@ -1346,28 +1345,45 @@ class BaseEnv(ABC):
         This method handles the CLI commands for serve, process, and evaluate.
         """
 
-        # Create subcommands dictionary
-        subcommands = {
-            "serve": cls.get_cli_serve_config_cls(),
-            "process": cls.get_cli_process_config_cls(),
-            "evaluate": cls.get_cli_evaluate_config_cls(),
-        }
+        class AppCLI(BaseSettings):
+            model_config = SettingsConfigDict(
+                cli_prog_name=f"CLI for {cls.__name__}",
+                cli_parse_args=True,
+                cli_avoid_json=True,
+                cli_exit_on_error=False,  # Allows us to handle errors in our try/except block
+            )
 
-        # Custom exception handler for cleaner error output
-        def custom_error_handler(ex: Exception) -> int:
-            """Handles exceptions with clean output for known error types."""
-            if isinstance(ex, FailedExecutionException):
-                # Handle argparse errors (already printed by argparse)
-                logger.error(ex.message.split("error: ")[-1])
-                return 2
+            serve: CliSubCommand[cls.get_cli_serve_config_cls()]  # type: ignore
+            process: CliSubCommand[cls.get_cli_process_config_cls()]  # type: ignore
+            evaluate: CliSubCommand[cls.get_cli_evaluate_config_cls()]  # type: ignore
 
+        try:
+            # Instantiating the model automatically parses sys.argv.
+            # Nested fields work out of the box (e.g., --serve.host 0.0.0.0)
+            args = AppCLI()
+            active_command = next(
+                (cmd for cmd in [args.serve, args.process, args.evaluate] if cmd), None
+            )
+
+            if active_command:
+                logger.info(f"Initializing {active_command.__class__.__name__} mode...")
+                active_command.run()
+            else:
+                logger.error("No valid subcommand provided.")
+
+        except FailedExecutionException as ex:
+            # Your exact custom logic
+            logger.error(str(ex).split("error: ")[-1])
+            sys.exit(2)
+
+        except ValidationError as ex:
+            # Catch Pydantic's native validation errors for a cleaner output
+            logger.error(f"Configuration error: {ex}")
+            sys.exit(2)
+
+        except Exception as ex:
+            # Re-raise any other unknown exceptions
             raise ex
-
-        run_and_exit(
-            subcommands,
-            description=f"CLI for {cls.__name__}",
-            exception_handler=custom_error_handler,
-        )
 
     @classmethod
     def get_cli_serve_config_cls(cls) -> type:
@@ -1378,26 +1394,46 @@ class BaseEnv(ABC):
             type: The CliServeConfig class for serving commands.
         """
         # Get the default configurations defined by the specific environment class
-        default_env_config, default_server_configs = cls.config_init()
+        default_env_config, default_server_configs_from_init = cls.config_init()
 
-        # Define namespace prefixes for CLI arguments and YAML keys
-        env_full_prefix = f"{ENV_NAMESPACE}{NAMESPACE_SEP}"
-        openai_full_prefix = f"{OPENAI_NAMESPACE}{NAMESPACE_SEP}"
+        # Handle server_configs_from_init appropriately for creating a default CLI model
+        # If it's a list (multiple servers), we'll take the first one as a template for CLI args,
+        # or use APIServerConfig if the list is empty or contains ServerBaseline.
+        # If it's a single APIServerConfig, we use its type.
+        # If it's ServerBaseline, we use APIServerConfig type for CLI args to allow overrides.
+        if isinstance(default_server_configs_from_init, list):
+            if default_server_configs_from_init and isinstance(
+                default_server_configs_from_init[0], APIServerConfig
+            ):
+                openai_config_cls = type(default_server_configs_from_init[0])
+                # Use the actual instance for default values later if it's a single config
+                default_openai_config_instance = (
+                    default_server_configs_from_init[0]
+                    if len(default_server_configs_from_init) == 1
+                    else openai_config_cls()
+                )
+            else:
+                openai_config_cls = (
+                    APIServerConfig  # Default to APIServerConfig for CLI definition
+                )
+                default_openai_config_instance = APIServerConfig()
+        elif isinstance(default_server_configs_from_init, APIServerConfig):
+            openai_config_cls = type(default_server_configs_from_init)
+            default_openai_config_instance = default_server_configs_from_init
+        else:  # ServerBaseline or other
+            openai_config_cls = APIServerConfig
+            default_openai_config_instance = APIServerConfig()
 
         # Define the CLI configuration class dynamically
-        class CliServeConfig(
-            get_prefixed_pydantic_model(type(default_env_config), env_full_prefix),
-            get_prefixed_pydantic_model(
-                APIServerConfig, openai_full_prefix
-            ),  # Use APIServerConfig for CLI args
-            ServerManagerConfig,  # ServerManager args are not namespaced by default
-            Cmd,
-        ):
+        class CliServeConfig(BaseSettings, ServerManagerConfig):
             """
             Configuration for the serve command.
             Supports overrides via YAML config file and CLI arguments.
             Order of precedence: CLI > YAML > Class Defaults.
             """
+
+            env: type(default_env_config) = Field(default_factory=lambda: default_env_config)  # type: ignore
+            openai: openai_config_cls = Field(default_factory=lambda: default_openai_config_instance)  # type: ignore
 
             config: str | None = Field(
                 default=None,
@@ -1423,8 +1459,9 @@ class BaseEnv(ABC):
                 else:
                     yaml_config = {}
 
-                # Get CLI flags passed with double dashes (e.g., --env--foo bar)
-                cli_passed_flags = get_double_dash_flags()
+                # Get CLI flags parsed natively by Pydantic Settings
+                # exclude_unset=True isolates only the arguments explicitly passed via CLI
+                cli_passed_flags = self.model_dump(exclude_unset=True)
 
                 # --- Configuration Merging ---
                 # Priority: CLI > YAML > Class Defaults
@@ -1433,18 +1470,16 @@ class BaseEnv(ABC):
                 env_config_dict = merge_dicts(
                     default_env_config.model_dump(),  # Class Defaults
                     yaml_config.get(ENV_NAMESPACE, {}),  # YAML config
-                    extract_namespace(cli_passed_flags, env_full_prefix),  # CLI args
+                    cli_passed_flags.get(ENV_NAMESPACE, {}),  # CLI args
                 )
 
                 # 2. OpenAI Configuration (used for potential overrides)
-                oai_cli_passed_args = extract_namespace(
-                    cli_passed_flags, openai_full_prefix
-                )  # CLI args
+                oai_cli_passed_args = cli_passed_flags.get(OPENAI_NAMESPACE, {})
                 yaml_oai_config = yaml_config.get(OPENAI_NAMESPACE, {})
 
                 # Debug logging for CLI args
                 logger.debug("[CLI DEBUG] cli_passed_flags = %s", cli_passed_flags)
-                logger.debug("[CLI DEBUG] openai_full_prefix = %s", openai_full_prefix)
+                logger.debug("[CLI DEBUG] OPENAI_NAMESPACE = %s", OPENAI_NAMESPACE)
                 logger.debug(
                     "[CLI DEBUG] oai_cli_passed_args = %s", oai_cli_passed_args
                 )
@@ -1453,7 +1488,7 @@ class BaseEnv(ABC):
                 # Auto-convert ServerBaseline to APIServerConfig when CLI/YAML overrides are provided
                 # This allows any environment to use --openai.* CLI args without modifying config_init
                 # Use a new variable to avoid UnboundLocalError from closure scoping
-                effective_server_configs = default_server_configs
+                effective_server_configs = default_server_configs_from_init
                 if isinstance(effective_server_configs, ServerBaseline) and (
                     oai_cli_passed_args or yaml_oai_config
                 ):
@@ -1577,10 +1612,6 @@ class BaseEnv(ABC):
             default_server_configs_from_init,
         ) = cls.config_init()
 
-        # Define namespace prefixes
-        env_full_prefix = f"{ENV_NAMESPACE}{NAMESPACE_SEP}"
-        openai_full_prefix = f"{OPENAI_NAMESPACE}{NAMESPACE_SEP}"
-
         # Create Pydantic model classes based on the types from config_init.
         # The defaults from config_init will be the primary source of defaults.
         env_config_cls_from_init = type(default_env_config_from_init)
@@ -1594,36 +1625,34 @@ class BaseEnv(ABC):
             if default_server_configs_from_init and isinstance(
                 default_server_configs_from_init[0], APIServerConfig
             ):
-                openai_config_cls_for_cli = type(default_server_configs_from_init[0])
+                openai_config_cls = type(default_server_configs_from_init[0])
                 # Use the actual instance for default values later if it's a single config
-                default_openai_config_instance_for_cli = (
+                default_openai_config_instance = (
                     default_server_configs_from_init[0]
                     if len(default_server_configs_from_init) == 1
-                    else openai_config_cls_for_cli()
+                    else openai_config_cls()
                 )
             else:
-                openai_config_cls_for_cli = (
+                openai_config_cls = (
                     APIServerConfig  # Default to APIServerConfig for CLI definition
                 )
-                default_openai_config_instance_for_cli = APIServerConfig()
+                default_openai_config_instance = APIServerConfig()
         elif isinstance(default_server_configs_from_init, APIServerConfig):
-            openai_config_cls_for_cli = type(default_server_configs_from_init)
-            default_openai_config_instance_for_cli = default_server_configs_from_init
+            openai_config_cls = type(default_server_configs_from_init)
+            default_openai_config_instance = default_server_configs_from_init
         else:  # ServerBaseline or other
-            openai_config_cls_for_cli = APIServerConfig
-            default_openai_config_instance_for_cli = APIServerConfig()
+            openai_config_cls = APIServerConfig
+            default_openai_config_instance = APIServerConfig()
 
-        class CliProcessConfig(
-            get_prefixed_pydantic_model(env_config_cls_from_init, env_full_prefix),
-            get_prefixed_pydantic_model(openai_config_cls_for_cli, openai_full_prefix),
-            ServerManagerConfig,  # ServerManagerConfig defaults are fine as is.
-            Cmd,
-        ):
+        class CliProcessConfig(BaseSettings, ServerManagerConfig):
             """
             Configuration for the process command.
             Supports overrides via YAML config file and CLI arguments.
             Order of precedence: CLI > YAML > `config_init` defaults.
             """
+
+            env: env_config_cls_from_init = Field(default_factory=lambda: default_env_config_from_init)  # type: ignore
+            openai: openai_config_cls = Field(default_factory=lambda: default_openai_config_instance)  # type: ignore
 
             config: str | None = Field(
                 default=None,
@@ -1648,8 +1677,9 @@ class BaseEnv(ABC):
                 else:
                     yaml_config = {}
 
-                # Get CLI flags passed with double dashes
-                cli_passed_flags = get_double_dash_flags()
+                # Get CLI flags parsed natively by Pydantic Settings
+                # exclude_unset=True isolates only the arguments explicitly passed via CLI
+                cli_passed_flags = self.model_dump(exclude_unset=True)
 
                 # --- Configuration Merging ---
                 # Priority: CLI > YAML > `config_init` defaults
@@ -1669,27 +1699,23 @@ class BaseEnv(ABC):
                 env_config_dict = merge_dicts(
                     env_config_dict_base,  # `config_init` defaults with process adjustments
                     yaml_config.get(ENV_NAMESPACE, {}),  # YAML config
-                    extract_namespace(cli_passed_flags, env_full_prefix),  # CLI args
+                    cli_passed_flags.get(ENV_NAMESPACE, {}),  # CLI args
                 )
 
                 # 2. OpenAI Configuration
-                oai_cli_passed_args = extract_namespace(
-                    cli_passed_flags, openai_full_prefix
-                )  # CLI args
+                oai_cli_passed_args = cli_passed_flags.get(OPENAI_NAMESPACE, {})
                 yaml_oai_config = yaml_config.get(OPENAI_NAMESPACE, {})
 
                 # Determine the base OpenAI config from config_init for merging
                 # This uses the instance we determined earlier for CLI definition defaults
-                openai_config_dict_base = (
-                    default_openai_config_instance_for_cli.model_dump()
-                )
+                openai_config_dict_base = default_openai_config_instance.model_dump()
 
                 if isinstance(default_server_configs_from_init, ServerBaseline) and (
                     oai_cli_passed_args or yaml_oai_config
                 ):
                     # If config_init provided ServerBaseline, but CLI/YAML provides OpenAI specifics,
                     # it implies an override intent for a single server.
-                    # We use the default_openai_config_instance_for_cli (which would be a default APIServerConfig)
+                    # We use the default_openai_config_instance (which would be a default APIServerConfig)
                     # as the base for merging, allowing it to be fully specified by YAML/CLI.
                     pass  # Base is already set correctly for this case
 
@@ -1846,10 +1872,6 @@ class BaseEnv(ABC):
             default_server_configs_from_init,
         ) = cls.config_init()
 
-        # Define namespace prefixes
-        env_full_prefix = f"{ENV_NAMESPACE}{NAMESPACE_SEP}"
-        openai_full_prefix = f"{OPENAI_NAMESPACE}{NAMESPACE_SEP}"
-
         # Create Pydantic model classes based on the types from config_init.
         # The defaults from config_init will be the primary source of defaults.
         env_config_cls_from_init = type(default_env_config_from_init)
@@ -1863,36 +1885,34 @@ class BaseEnv(ABC):
             if default_server_configs_from_init and isinstance(
                 default_server_configs_from_init[0], APIServerConfig
             ):
-                openai_config_cls_for_cli = type(default_server_configs_from_init[0])
+                openai_config_cls = type(default_server_configs_from_init[0])
                 # Use the actual instance for default values later if it's a single config
-                default_openai_config_instance_for_cli = (
+                default_openai_config_instance = (
                     default_server_configs_from_init[0]
                     if len(default_server_configs_from_init) == 1
-                    else openai_config_cls_for_cli()
+                    else openai_config_cls()
                 )
             else:
-                openai_config_cls_for_cli = (
+                openai_config_cls = (
                     APIServerConfig  # Default to APIServerConfig for CLI definition
                 )
-                default_openai_config_instance_for_cli = APIServerConfig()
+                default_openai_config_instance = APIServerConfig()
         elif isinstance(default_server_configs_from_init, APIServerConfig):
-            openai_config_cls_for_cli = type(default_server_configs_from_init)
-            default_openai_config_instance_for_cli = default_server_configs_from_init
+            openai_config_cls = type(default_server_configs_from_init)
+            default_openai_config_instance = default_server_configs_from_init
         else:  # ServerBaseline or other
-            openai_config_cls_for_cli = APIServerConfig
-            default_openai_config_instance_for_cli = APIServerConfig()
+            openai_config_cls = APIServerConfig
+            default_openai_config_instance = APIServerConfig()
 
-        class CliEvaluateConfig(
-            get_prefixed_pydantic_model(env_config_cls_from_init, env_full_prefix),
-            get_prefixed_pydantic_model(openai_config_cls_for_cli, openai_full_prefix),
-            ServerManagerConfig,  # ServerManagerConfig defaults are fine as is.
-            Cmd,
-        ):
+        class CliEvaluateConfig(BaseSettings, ServerManagerConfig):
             """
             Configuration for the evaluate command.
             Supports overrides via YAML config file and CLI arguments.
             Order of precedence: CLI > YAML > `config_init` defaults.
             """
+
+            env: env_config_cls_from_init = Field(default_factory=lambda: default_env_config_from_init)  # type: ignore
+            openai: openai_config_cls = Field(default_factory=lambda: default_openai_config_instance)  # type: ignore
 
             config: str | None = Field(
                 default=None,
@@ -1917,9 +1937,9 @@ class BaseEnv(ABC):
                 else:
                     yaml_config = {}
 
-                # Get CLI flags passed with double dashes
-                cli_passed_flags = get_double_dash_flags()
-
+                # Get CLI flags parsed natively by Pydantic Settings
+                # exclude_unset=True isolates only the arguments explicitly passed via CLI
+                cli_passed_flags = self.model_dump(exclude_unset=True)
                 # --- Configuration Merging ---
                 # Priority: CLI > YAML > `config_init` defaults
 
@@ -1932,20 +1952,16 @@ class BaseEnv(ABC):
                 env_config_dict = merge_dicts(
                     env_config_dict_base,  # `config_init` defaults with evaluate adjustments
                     yaml_config.get(ENV_NAMESPACE, {}),  # YAML config
-                    extract_namespace(cli_passed_flags, env_full_prefix),  # CLI args
+                    cli_passed_flags.get(ENV_NAMESPACE, {}),  # CLI args
                 )
 
                 # 2. OpenAI Configuration
-                oai_cli_passed_args = extract_namespace(
-                    cli_passed_flags, openai_full_prefix
-                )  # CLI args
+                oai_cli_passed_args = cli_passed_flags.get(OPENAI_NAMESPACE, {})
                 yaml_oai_config = yaml_config.get(OPENAI_NAMESPACE, {})
 
                 # Determine the base OpenAI config from config_init for merging
                 # This uses the instance we determined earlier for CLI definition defaults
-                openai_config_dict_base = (
-                    default_openai_config_instance_for_cli.model_dump()
-                )
+                openai_config_dict_base = default_openai_config_instance.model_dump()
 
                 if isinstance(default_server_configs_from_init, ServerBaseline) and (
                     oai_cli_passed_args or yaml_oai_config
