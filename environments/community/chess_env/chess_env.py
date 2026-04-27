@@ -19,7 +19,6 @@ from rich.table import Table
 from tqdm.asyncio import tqdm_asyncio
 from transformers import PreTrainedTokenizer, PreTrainedTokenizerFast
 
-# from transformers import AutoTokenizer
 from atroposlib.envs.base import (
     APIServerConfig,
     BaseEnv,
