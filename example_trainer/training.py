@@ -342,10 +342,10 @@ def run_training_step(
         ):
             inf_logprobs = inference_logprob_batches[batch_idx]
 
-        for i, adv_batch in enumerate(advantages):
+        """for i, adv_batch in enumerate(advantages):
             mean = adv_batch.mean()
             std = adv_batch.std().clamp_min(1e-8)
-            advantage_batches[i] = (adv_batch - mean) / std
+            advantage_batches[i] = (adv_batch - mean) / std"""
 
         loss, metrics = compute_grpo_loss(
             model,
