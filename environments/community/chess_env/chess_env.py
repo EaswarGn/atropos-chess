@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import math
 import os
 import random
 import re
@@ -539,7 +540,8 @@ class ChessEnv(BaseEnv):
         # results in a score of ~0.5.
         # A 0cp diff always results in 1.0.
         scaling_factor = self.config.reward_scaling_factor
-        final_score = 1.0 / (1.0 + (eval_diff / scaling_factor))
+        # final_score = 1.0 / (1.0 + (eval_diff / scaling_factor))
+        final_score = 1 / (1 + math.exp(eval_diff / scaling_factor))
 
         return final_score
 
