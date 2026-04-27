@@ -185,7 +185,7 @@ class ChessEnv(BaseEnv):
         test_set = test_set.filter(
             lambda x: min_rating <= x["rating"] <= max_rating,
             desc=f"Filtering validation dataset by rating ({min_rating}-{max_rating})",
-            num_procs=os.cpu_count(),
+            num_proc=os.cpu_count(),
         )
 
         total_count = len(test_set)
