@@ -5,7 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
-    "atroposlib[dev]>=0.4.0",
+    "atroposlib>=0.4.0",
     "chess>=1.11.2",
 ]
 
@@ -17,3 +17,6 @@ tinker = [
     "tinker>=0.16.1",
     "tinker-cookbook>=0.2.2",
 ]
+
+[tool.uv.sources]
+atroposlib = { path = "../../../", editable = true }

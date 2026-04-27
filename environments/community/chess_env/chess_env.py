@@ -17,9 +17,8 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 from tqdm.asyncio import tqdm_asyncio
-from transformers import PreTrainedTokenizer, PreTrainedTokenizerFast
+from transformers import PreTrainedTokenizer, PreTrainedTokenizerFast  # noqa: E402
 
-# from transformers import AutoTokenizer
 from atroposlib.envs.base import (
     APIServerConfig,
     BaseEnv,
@@ -32,6 +31,8 @@ from atroposlib.envs.server_handling.managed_server import SequenceNode
 from .chess_env_types import ChessPuzzleItem, MoveExtractionError, RolloutItem
 from .configs import ChessEnvConfig
 from .curriculum_manager import StatefulCurriculumManager, format_item
+
+os.environ["TRANSFORMERS_VERBOSITY"] = "error"
 
 
 class ChessEnv(BaseEnv):
