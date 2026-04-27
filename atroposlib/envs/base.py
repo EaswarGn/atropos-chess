@@ -1432,8 +1432,8 @@ class BaseEnv(ABC):
             Order of precedence: CLI > YAML > Class Defaults.
             """
 
-            env: type(default_env_config) = Field(default_factory=lambda: default_env_config)  # type: ignore
-            openai: openai_config_cls = Field(default_factory=lambda: default_openai_config_instance)  # type: ignore
+            env: type(default_env_config) = Field(default=default_env_config)  # type: ignore
+            openai: openai_config_cls = Field(default_factory=default_openai_config_instance)  # type: ignore
 
             config: str | None = Field(
                 default=None,
@@ -1651,8 +1651,8 @@ class BaseEnv(ABC):
             Order of precedence: CLI > YAML > `config_init` defaults.
             """
 
-            env: env_config_cls_from_init = Field(default_factory=lambda: default_env_config_from_init)  # type: ignore
-            openai: openai_config_cls = Field(default_factory=lambda: default_openai_config_instance)  # type: ignore
+            env: env_config_cls_from_init = Field(default=default_env_config_from_init)  # type: ignore
+            openai: openai_config_cls = Field(default=default_openai_config_instance)  # type: ignore
 
             config: str | None = Field(
                 default=None,
@@ -1911,8 +1911,8 @@ class BaseEnv(ABC):
             Order of precedence: CLI > YAML > `config_init` defaults.
             """
 
-            env: env_config_cls_from_init = Field(default_factory=lambda: default_env_config_from_init)  # type: ignore
-            openai: openai_config_cls = Field(default_factory=lambda: default_openai_config_instance)  # type: ignore
+            env: env_config_cls_from_init = Field(default=default_env_config_from_init)  # type: ignore
+            openai: openai_config_cls = Field(default=default_openai_config_instance)  # type: ignore
 
             config: str | None = Field(
                 default=None,
