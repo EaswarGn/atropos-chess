@@ -1574,14 +1574,15 @@ class BaseEnv(ABC):
 
                 # --- Create and Run Environment ---
                 # Create the environment instance using the final, instantiated config objects
+                rprint(env_config)
+                rprint(openai_configs)
+
                 env = cls(
                     config=env_config,
                     server_configs=openai_configs,
                     slurm=server_manager_config.slurm,
                     testing=server_manager_config.testing,
                 )
-                rprint(env_config)
-                rprint(openai_configs)
 
                 # Handle the case where we might already be in an event loop
                 try:
