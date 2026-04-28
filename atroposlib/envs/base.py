@@ -29,7 +29,7 @@ from tenacity import retry, stop_after_attempt, wait_random_exponential
 from transformers import AutoTokenizer
 from typing_extensions import TypedDict
 
-from atroposlib.envs.constants import ENV_NAMESPACE, NAMESPACE_SEP, OPENAI_NAMESPACE
+from atroposlib.envs.constants import ENV_NAMESPACE, OPENAI_NAMESPACE
 from atroposlib.envs.server_handling.openai_server import resolve_openai_configs
 from atroposlib.frontend.jsonl2html import generate_html
 from atroposlib.type_definitions import UUID
@@ -1433,7 +1433,7 @@ class BaseEnv(ABC):
             """
 
             env: type(default_env_config) = Field(default=default_env_config)  # type: ignore
-            openai: openai_config_cls = Field(default_factory=default_openai_config_instance)  # type: ignore
+            openai: openai_config_cls = Field(default=default_openai_config_instance)  # type: ignore
 
             config: str | None = Field(
                 default=None,
@@ -1444,12 +1444,8 @@ class BaseEnv(ABC):
                 """The logic to execute for the 'serve' command."""
                 # Set default wandb name if not provided and class has a name
                 # Note: This modifies the 'self' instance based on CLI args before full parsing.
-                wandb_name_attr = f"{ENV_NAMESPACE}{NAMESPACE_SEP}wandb_name"
-                if (
-                    getattr(self, wandb_name_attr, None) is None
-                    and cls.name is not None
-                ):
-                    setattr(self, wandb_name_attr, cls.name)
+                if self.env.wandb_name is None and cls.name is not None:
+                    self.env.wandb_name = cls.name
 
                 # Load configuration from YAML file if specified
                 if self.config is not None:
@@ -1662,12 +1658,8 @@ class BaseEnv(ABC):
             def run(self) -> None:
                 """The logic to execute for the 'process' command."""
                 # Set default wandb name if not provided and class has a name
-                wandb_name_attr = f"{ENV_NAMESPACE}{NAMESPACE_SEP}wandb_name"
-                if (
-                    getattr(self, wandb_name_attr, None) is None
-                    and cls.name is not None
-                ):
-                    setattr(self, wandb_name_attr, cls.name)
+                if self.env.wandb_name is None and cls.name is not None:
+                    self.env.wandb_name = cls.name
 
                 # Load configuration from YAML file if specified
                 if self.config is not None:
@@ -1922,12 +1914,8 @@ class BaseEnv(ABC):
             def run(self) -> None:
                 """The logic to execute for the 'evaluate' command."""
                 # Set default wandb name if not provided and class has a name
-                wandb_name_attr = f"{ENV_NAMESPACE}{NAMESPACE_SEP}wandb_name"
-                if (
-                    getattr(self, wandb_name_attr, None) is None
-                    and cls.name is not None
-                ):
-                    setattr(self, wandb_name_attr, cls.name)
+                if self.env.wandb_name is None and cls.name is not None:
+                    self.env.wandb_name = cls.name
 
                 # Load configuration from YAML file if specified
                 if self.config is not None:
