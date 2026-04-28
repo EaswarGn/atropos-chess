@@ -263,13 +263,14 @@ class ChessEnv(BaseEnv):
             Tuple[ScoredDataGroup, List]: A tuple containing the scored data group and a list
                 of items to backlog (currently empty).
         """
-        prompt = self.tokenizer.apply_chat_template(
+
+        """prompt = self.tokenizer.apply_chat_template(
             item.prompt, add_generation_prompt=True, tokenize=False
-        )
+        )"""
 
         async with self.server.managed_server(tokenizer=self.tokenizer) as managed:
-            completions = await managed.completion(
-                prompt=prompt,
+            chat_completions = await managed.chat_completion(
+                messages=item.prompt,
                 n=self.config.group_size,
                 max_tokens=self.config.max_token_length,
                 temperature=1.0,
@@ -281,16 +282,16 @@ class ChessEnv(BaseEnv):
 
         to_score: List[RolloutItem] = []
 
-        for i, completion_choice in enumerate(completions.choices):
+        for node, choice in zip(nodes, chat_completions.choices):
             rollout_item = RolloutItem(
                 input_item=item,
                 model_completion={
                     "role": "assistant",
-                    "content": completion_choice.text,
+                    "content": choice.message.content,
                 },
-                tokens=nodes[i].tokens,
-                masks=nodes[i].masked_tokens,
-                logprobs=nodes[i].logprobs,
+                tokens=node.tokens,
+                masks=node.masked_tokens,
+                logprobs=node.logprobs,
             )
 
             to_score.append(rollout_item)
