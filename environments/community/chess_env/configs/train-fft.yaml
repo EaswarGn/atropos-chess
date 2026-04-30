@@ -13,9 +13,10 @@ vllm:
   host: "0.0.0.0"
   port: 9001
   tensor_parallel_size: 1 # vLLM runs on its own single GPU
-  gpu_memory_utilization: 0.9 # Leave some headroom
+  gpu_memory_utilization: 0.45 # Leave some headroom
   enable_prefix_caching: true
   max_model_len: 3072
+  device: auto
 
 # --- GRPO / TRL Specifics ---
 trl:
@@ -24,6 +25,8 @@ trl:
   max_completion_length: 2048
   use_liger_loss: true
   use_vllm: true
+  vllm_mode: colocate            # for single gpu training
+  vllm_enable_sleep_mode: true  # for single gpu training
   vllm_server_port: 9001
   vllm_server_timeout: 60.0
 
