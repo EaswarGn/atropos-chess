@@ -4,7 +4,7 @@ env:
   group_size: 8
   max_num_workers: -1
   max_eval_workers: 16
-  max_num_workers_per_node: 8
+  max_num_workers_per_node: 4
   steps_per_eval: 50
   max_token_length: 2048 #max tokens for generation in trainer
   eval_handling: "STOP_TRAIN"
