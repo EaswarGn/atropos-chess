@@ -71,14 +71,12 @@ class GSM8kEnv(BaseEnv):
             max_token_length=2048,
             wandb_name="gsm8k",
         )
-        server_config = [
-            APIServerConfig(
-                model_name="NousResearch/DeepHermes-3-Llama-3-3B-Preview",
-                base_url="http://localhost:9001/v1",
-                api_key="x",
-                num_requests_for_eval=256,
-            )
-        ]
+        server_config = APIServerConfig(
+            model_name="NousResearch/DeepHermes-3-Llama-3-3B-Preview",
+            base_url="http://localhost:9001/v1",
+            api_key="x",
+            num_requests_for_eval=256,
+        )
 
         return env_config, server_config
 
