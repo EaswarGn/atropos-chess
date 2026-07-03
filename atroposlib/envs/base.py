@@ -210,6 +210,12 @@ class BaseEnvConfig(BaseModel):
         "no thinking prompt is injected. Use HERMES_REASONING_PROMPT from "
         "eval_helpers for the standard Hermes reasoning prompt.",
     )
+    eval_before_training: bool = Field(
+        default=False,
+        description="If True, runs evaluation once before starting the training rollout loop "
+        "when using the 'serve' subcommand. Useful for establishing a baseline metric "
+        "before any training occurs.",
+    )
 
 
 class BaseEnv(ABC):
@@ -1184,6 +1190,18 @@ class BaseEnv(ABC):
         await self.get_server_info()
         # Wait for other instances to get setup :)
         await asyncio.sleep(5)
+        
+        # Run evaluation once before training if configured
+        # Eval handling enums aren't relevant here because this is before training starts
+        if self.config.eval_before_training:
+            logger.info("Running pre-training evaluation (eval_before_training=True)...")
+            try:
+                await self.evaluate()
+                await self.wandb_log({}) #Flush eval metrics to wandb
+                logger.info("Pre-training evaluation completed.")
+            except Exception as e:
+                logger.error(f"Pre-training evaluation failed: {e}")
+        
         while True:
             if self.last_loop_time is not None:
                 self.mainloop_timings.append(
@@ -1202,6 +1220,9 @@ class BaseEnv(ABC):
                     // self.config.batch_size
                 )
             ) > self.config.total_steps:
+                
+                await self.wandb_log({}) #Flush remaining metrics to wandb
+                
                 for worker in self.workers:
                     worker.cancel()
                 break
