@@ -1203,6 +1203,9 @@ class BaseEnv(ABC):
                     // self.config.batch_size
                 )
             ) > self.config.total_steps:
+                
+                await self.wandb_log({}) #Flush remaining metrics to wandb
+                
                 for worker in self.workers:
                     worker.cancel()
                 break
